@@ -71,6 +71,7 @@ docs/
 - **Everything in the repo is in English**: UI text, code, comments, test names, commit messages and
   docs (D-06).
 - Small commit at the end of each phase: `phase N: <summary>`.
+- Commit messages carry no AI co-author trailer (user's decision).
 
 ## Commands
 
