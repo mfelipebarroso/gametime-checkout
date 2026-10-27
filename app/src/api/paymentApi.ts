@@ -5,7 +5,6 @@ import {
   type Attempt,
   type CreateAttemptRequest,
   type MockScenarioRequest,
-  type MockTotalOverrideMinor,
   type OrderQuote,
 } from '@shared';
 
@@ -56,7 +55,6 @@ export interface PaymentApi {
 export interface MockApi {
   getScenario(): Promise<Required<MockScenarioRequest>>;
   setScenario(scenario: MockScenarioRequest): Promise<Required<MockScenarioRequest>>;
-  setTotalOverride(orderId: string, totalOverrideMinor: MockTotalOverrideMinor): Promise<OrderQuote>;
   reset(): Promise<void>;
 }
 
@@ -154,8 +152,6 @@ export function createMockApi(baseUrl: string, timeoutMs: number, http: HttpClie
   return {
     getScenario: () => http('/v1/mock/scenario', { method: 'GET', timeoutMs }),
     setScenario: scenario => http('/v1/mock/scenario', { method: 'POST', body: scenario, timeoutMs }),
-    setTotalOverride: (orderId, totalOverrideMinor) =>
-      http(`/v1/mock/orders/${encodeURIComponent(orderId)}`, { method: 'PUT', body: { totalOverrideMinor }, timeoutMs }),
     reset: async () => {
       await http('/v1/mock/reset', { method: 'POST', timeoutMs });
     },

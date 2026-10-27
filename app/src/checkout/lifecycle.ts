@@ -13,7 +13,7 @@ export interface AppStateLike {
 
 export interface LinkingLike {
   addEventListener(type: 'url', listener: (event: { url: string }) => void): Subscription;
-  getInitialURL(): Promise<string | null>;
+  getInitialURL(): Promise<string | null | undefined>;
 }
 
 type Signals = Pick<CheckoutOrchestrator, 'init' | 'onAppActive' | 'handleUrl'>;

@@ -142,3 +142,15 @@ add a line under "Deviations" at the end of the file.
   logcat tag (no sensitive data).
 - **Missing native module** → `false` for both wallets (`unavailableWalletSource`), with no
   dev-only fake: the dev menu overrides cover simulation.
+
+### 2026-10-26 — Phase 5
+
+- **Environment simulator is hidden and lean** (user's decision): long-press the "Checkout" title
+  (dev builds only). It holds only what the brief asks for (Platform; Apple Pay real / card
+  provisioned / no cards; Google Pay real / set up / not set up) plus "Slow server (8 s)" to kill the
+  app mid-payment and "Reset demo". The SPEC §8 controls for next outcome, exact order totals and the
+  state/snapshot dump were dropped from the UI; the server keeps those mock routes for automated tests
+  and curl.
+- **Card form:** Pay stays disabled until the card is valid (brief: "must not allow submission"), so
+  errors show on blur only; the "show all errors on submit" path from SPEC §3 only runs as a guard
+  inside `onPress`.
