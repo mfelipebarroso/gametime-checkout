@@ -1,7 +1,7 @@
-// Card validation and formatting (SPEC §3). Pure functions: `now` is always injected.
+// Card validation and formatting. Pure functions: `now` is always passed in.
 
 export type CardBrand = 'visa' | 'mastercard' | 'amex' | 'discover' | 'unknown';
-export type SupportedBrand = Exclude<CardBrand, 'unknown'>;
+type SupportedBrand = Exclude<CardBrand, 'unknown'>;
 
 export type CardErrorCode =
   | 'NUMBER_INCOMPLETE'
@@ -82,7 +82,7 @@ const BRANDS: Record<SupportedBrand, BrandSpec> = {
 const BRAND_ORDER: readonly SupportedBrand[] = ['amex', 'visa', 'mastercard', 'discover'];
 const MAX_PAN_LENGTH = 19;
 const UNKNOWN_CVC_MAX = 4;
-export const MAX_EXPIRY_YEARS_AHEAD = 20;
+const MAX_EXPIRY_YEARS_AHEAD = 20;
 
 export function digitsOnly(input: string): string {
   return input.replace(/\D/g, '');
@@ -180,8 +180,7 @@ export function validateNumber(input: string): FieldResult & { brand: CardBrand 
   }
 
   const spec = BRANDS[brand];
-  const max = Math.max(...spec.lengths);
-  if (digits.length > max) {
+  if (digits.length > maxLengthFor(brand)) {
     return { valid: false, complete: true, error: 'NUMBER_INVALID', brand };
   }
   if (!spec.lengths.includes(digits.length)) {
@@ -310,7 +309,7 @@ export function validateCard(form: CardForm, now: Date): CardValidation {
   };
 }
 
-/** Last 4 digits, for the fake token and display. */
+/** Last 4 digits, for the fake token. */
 export function last4(input: string): string {
   return digitsOnly(input).slice(-4);
 }

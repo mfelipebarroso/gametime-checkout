@@ -1,11 +1,10 @@
-import { formatUsd } from './format';
-import type { Attempt } from '../../shared/index';
+import { formatUsd, returnUrl, type Attempt } from '../../shared/index';
 
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-/** Simulated Affirm page (D-10). The buttons POST; the server answers with a 302 back to the app. */
+/** Mock Affirm checkout. The buttons POST, and the server answers with a 302 back to the app. */
 export function renderAffirmPage(attempt: Attempt): string {
   const id = escapeHtml(attempt.attemptId);
   const amount = escapeHtml(formatUsd(attempt.amount.minorUnits));
@@ -16,7 +15,7 @@ export function renderAffirmPage(attempt: Attempt): string {
        <form method="post" action="/mock/affirm/checkout/${id}/approve"><button class="primary" type="submit">Approve</button></form>
        <form method="post" action="/mock/affirm/checkout/${id}/cancel"><button class="secondary" type="submit">Cancel</button></form>`
     : `<p class="amount">${amount}</p><p class="muted">This checkout is ${escapeHtml(attempt.status)}. You can return to the app.</p>
-       <a class="primary link" href="gametime-demo://payment/return?attemptId=${id}">Return to Gametime</a>`;
+       <a class="primary link" href="${escapeHtml(returnUrl(attempt.attemptId))}">Return to Gametime</a>`;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Affirm (mock)</title>

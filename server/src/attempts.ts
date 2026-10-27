@@ -1,5 +1,6 @@
-// Payment attempts (SPEC §5.3–§5.6). Every mutation runs in db.transaction(): better-sqlite3 is
-// synchronous, so transactions are serialized; the UNIQUE constraints are the final defense (invariant 6).
+// Payment attempts. Every mutation runs inside db.transaction(). better-sqlite3 is synchronous, so
+// transactions never interleave, and the UNIQUE constraints are the last line of defense against a
+// double charge.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -12,7 +13,7 @@ import {
 } from '../../shared/index';
 import type { Clock } from './clock';
 import type { DB } from './db';
-import { fail, ok, type ServiceResult } from './http';
+import { errors, fail, ok, type ServiceResult } from './http';
 import { lookupKey, requestHash, storeKey, updateStoredResponse } from './idempotency';
 import { declineCode, sourceTokenKind, type MockProcessor } from './mockProcessor';
 import { getOrderRow, toQuote } from './orders';
@@ -33,6 +34,9 @@ type AttemptRow = {
 };
 
 type AuthorizationRow = { outcome: 'approved' | 'declined' };
+
+/** `dropResponse` tells the route to destroy the socket after the commit. */
+export type AuthorizeResult = ServiceResult & { dropResponse?: boolean };
 
 export type AttemptsDeps = {
   db: DB;
@@ -56,6 +60,8 @@ export function toAttempt(row: AttemptRow): Attempt {
   };
 }
 
+const ATTEMPT_ID_RE = /^pat_[0-9a-f-]{36}$/;
+
 function getRow(db: DB, id: string): AttemptRow | undefined {
   return db.prepare('SELECT * FROM payment_attempts WHERE id = ?').get(id) as AttemptRow | undefined;
 }
@@ -75,14 +81,14 @@ export class AttemptsService {
     return this.deps.clock.now().toISOString();
   }
 
-  // ---------- GET (§5.6) ----------
+  // ---------- Get ----------
 
   get(attemptId: string): ServiceResult {
     const attempt = this.db.transaction(() => {
       this.resolveIfDue(attemptId);
       return getRow(this.db, attemptId);
     })();
-    return attempt ? ok(toAttempt(attempt)) : fail(404, 'ATTEMPT_NOT_FOUND', 'Payment attempt not found');
+    return attempt ? ok(toAttempt(attempt)) : errors.attemptNotFound();
   }
 
   /** Lazily resolves an expired `processing`. Must run inside a transaction. */
@@ -115,17 +121,17 @@ export class AttemptsService {
     }
   }
 
-  // ---------- CREATE (§5.3) ----------
+  // ---------- Create ----------
 
   create(key: string, body: CreateAttemptRequest): ServiceResult {
     const hash = requestHash(body);
     return this.db.transaction((): ServiceResult => {
       const prior = lookupKey(this.db, 'create', key, hash);
       if (prior.kind === 'mismatch') {
-        return fail(409, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency key was used with a different request');
+        return errors.keyReused();
       }
       if (prior.kind === 'replay') {
-        // Return the attempt's CURRENT state (this is how the client recovers attemptId after losing the response).
+        // Return the attempt's current state (this is how the client recovers attemptId after losing the response).
         const attemptId = (prior.body as Attempt).attemptId;
         this.resolveIfDue(attemptId);
         const row = getRow(this.db, attemptId);
@@ -134,14 +140,14 @@ export class AttemptsService {
 
       const order = getOrderRow(this.db, body.order.id);
       if (!order) {
-        return fail(404, 'ORDER_NOT_FOUND', 'Order not found');
+        return errors.orderNotFound();
       }
       if (order.status === 'paid') {
-        return fail(409, 'ORDER_ALREADY_PAID', 'This order has already been paid');
+        return errors.orderAlreadyPaid();
       }
       const quote = toQuote(order);
       if (body.order.version !== order.version || body.amount.minorUnits !== quote.total.minorUnits) {
-        return fail(409, 'QUOTE_STALE', 'The order total changed', { quote });
+        return errors.quoteStale({ quote });
       }
       const inProgress = this.db
         .prepare(`SELECT * FROM payment_attempts WHERE order_id = ? AND status = 'processing' LIMIT 1`)
@@ -172,65 +178,56 @@ export class AttemptsService {
     })();
   }
 
-  // ---------- AUTHORIZE (§5.4) ----------
+  // ---------- Authorize ----------
 
   /**
-   * `dropResponse` in the result tells the route to destroy the socket after the commit.
-   * With latency, the attempt stays `processing` (resolve_at) while the request waits; a GET in the
+   * With latency, the attempt is `processing` (with a resolve_at) while the request waits. A GET in the
    * meantime sees `processing`, so killing the app never leaves the attempt in an ambiguous state.
    */
-  async authorize(attemptId: string, key: string, sourceToken: string): Promise<ServiceResult & { dropResponse?: boolean }> {
+  async authorize(attemptId: string, key: string, sourceToken: string): Promise<AuthorizeResult> {
     const hash = requestHash({ attemptId, sourceToken });
     let pendingUntilMs = 0;
     let dropResponse = false;
 
     const result = this.db.transaction((): ServiceResult => {
-      // 1. Key
       const prior = lookupKey(this.db, 'authorize', key, hash);
       if (prior.kind === 'mismatch') {
-        return fail(409, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency key was used with a different request');
+        return errors.keyReused();
       }
       if (prior.kind === 'replay') {
         return { status: prior.status, body: prior.body, replayed: true };
       }
 
-      // 2. Reload the attempt
       const row = getRow(this.db, attemptId);
       if (!row) {
-        return fail(404, 'ATTEMPT_NOT_FOUND', 'Payment attempt not found');
+        return errors.attemptNotFound();
       }
       const order = getOrderRow(this.db, row.order_id)!;
       if (row.status === 'cancelled' && row.failure_code === 'QUOTE_STALE') {
-        return fail(409, 'QUOTE_STALE', 'The order total changed', { attempt: toAttempt(row), quote: toQuote(order) });
+        return errors.quoteStale({ attempt: toAttempt(row), quote: toQuote(order) });
       }
       if (row.status !== 'awaiting_user') {
-        return fail(409, 'ATTEMPT_NOT_AUTHORIZABLE', 'This payment attempt can no longer be authorized', {
-          attempt: toAttempt(row),
-        });
+        return errors.notAuthorizable(toAttempt(row));
       }
 
-      // 3. Revalidate the order version
+      // The order changed after the attempt was created: never charge the old price.
       if (order.version !== row.order_version) {
         this.db
           .prepare(`UPDATE payment_attempts SET status = 'cancelled', failure_code = 'QUOTE_STALE', updated_at = ? WHERE id = ?`)
           .run(this.nowIso(), row.id);
-        return fail(409, 'QUOTE_STALE', 'The order total changed', {
-          attempt: toAttempt(getRow(this.db, row.id)!),
-          quote: toQuote(order),
-        });
+        return errors.quoteStale({ attempt: toAttempt(getRow(this.db, row.id)!), quote: toQuote(order) });
       }
       if (order.status === 'paid') {
-        return fail(409, 'ORDER_ALREADY_PAID', 'This order has already been paid');
+        return errors.orderAlreadyPaid();
       }
 
-      // 4. One authorization per attempt (UNIQUE(attempt_id))
+      // UNIQUE(attempt_id): one authorization per attempt.
       const decision = this.deps.processor.decide(sourceToken);
       const now = this.deps.clock.now();
       this.db
         .prepare(`INSERT INTO authorizations (id, attempt_id, source_token_kind, outcome, created_at) VALUES (?, ?, ?, ?, ?)`)
         .run(`auth_${randomUUID()}`, row.id, sourceTokenKind(sourceToken), decision.outcome, now.toISOString());
 
-      // 5. Processor result
       if (decision.holdMs > 0) {
         const resolveAt = new Date(now.getTime() + decision.holdMs).toISOString();
         this.db
@@ -262,29 +259,27 @@ export class AttemptsService {
     return { ...result, dropResponse };
   }
 
-  /** Wraps authorize to turn a UNIQUE violation (the final defense) into a 409. */
-  async authorizeSafe(attemptId: string, key: string, sourceToken: string): Promise<ServiceResult & { dropResponse?: boolean }> {
+  /** authorize(), with a UNIQUE violation (the last line of defense) turned into a 409. */
+  async authorizeSafe(attemptId: string, key: string, sourceToken: string): Promise<AuthorizeResult> {
     try {
       return await this.authorize(attemptId, key, sourceToken);
     } catch (err) {
       if (isUniqueViolation(err)) {
         const row = getRow(this.db, attemptId);
-        return fail(409, 'ATTEMPT_NOT_AUTHORIZABLE', 'This payment attempt can no longer be authorized', {
-          ...(row ? { attempt: toAttempt(row) } : {}),
-        });
+        return errors.notAuthorizable(row && toAttempt(row));
       }
       throw err;
     }
   }
 
-  // ---------- CANCEL (§5.5) ----------
+  // ---------- Cancel ----------
 
   cancel(attemptId: string): ServiceResult {
     return this.db.transaction((): ServiceResult => {
       this.resolveIfDue(attemptId);
       const row = getRow(this.db, attemptId);
       if (!row) {
-        return fail(404, 'ATTEMPT_NOT_FOUND', 'Payment attempt not found');
+        return errors.attemptNotFound();
       }
       if (row.status === 'processing') {
         return fail(409, 'ATTEMPT_NOT_CANCELLABLE', 'This payment is being processed', { attempt: toAttempt(row) });
@@ -296,5 +291,15 @@ export class AttemptsService {
       }
       return ok(toAttempt(getRow(this.db, attemptId)!));
     })();
+  }
+
+  /** The attempt behind the mock Affirm page, or null when the id is unknown or not an Affirm attempt. */
+  findAffirmAttempt(attemptId: string): Attempt | null {
+    if (!ATTEMPT_ID_RE.test(attemptId)) {
+      return null;
+    }
+    const result = this.get(attemptId);
+    const attempt = result.status === 200 ? (result.body as Attempt) : null;
+    return attempt?.method === 'affirm' ? attempt : null;
   }
 }

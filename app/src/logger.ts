@@ -1,5 +1,7 @@
-// Client logger with a field allowlist and digit redaction (SPEC §10). Anything not on the
-// allowlist is dropped, so form objects, request bodies and tokens can never reach the sink.
+// Client logger with a field allowlist. Anything not on the list is dropped, so form objects, request
+// bodies and tokens can never reach the sink, and long digit runs are redacted on top of that.
+
+import { redact } from '@shared';
 
 export type LogEvent =
   | 'checkout_viewed'
@@ -41,12 +43,6 @@ export type LogSink = (entry: LogEntry) => void;
 export interface Logger {
   /** `attrs` is deliberately loose: unknown keys and non-primitive values are dropped at runtime. */
   log(event: LogEvent, attrs?: Record<string, unknown>): void;
-}
-
-const LONG_DIGITS = /\d{12,}/g;
-
-export function redact(value: string): string {
-  return value.replace(LONG_DIGITS, '[REDACTED]');
 }
 
 export function sanitize(event: LogEvent, attrs: Record<string, unknown> = {}): LogEntry {

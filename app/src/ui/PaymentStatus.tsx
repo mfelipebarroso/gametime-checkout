@@ -1,6 +1,11 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { CheckoutState } from '../domain/checkout.types';
+import type { CheckoutState, ReadyNotice } from '../domain/checkout.types';
 import { colors, radius } from './theme';
+
+const NOTICES: Record<ReadyNotice, string> = {
+  quote_changed: 'Your order total changed. Please review.',
+  payment_not_completed: "Your payment wasn't completed. You haven't been charged.",
+};
 
 type Action = { label: string; onPress: () => void; primary?: boolean };
 
@@ -16,7 +21,7 @@ type Props = {
 
 type Tone = 'info' | 'warning' | 'danger';
 
-/** What the fan sees in each state (SPEC §6.5), including "we don't know yet, we're checking". */
+/** What the fan sees in each state, including "we don't know yet, we're checking". */
 export function PaymentStatus(props: Props) {
   const content = describe(props);
   if (!content) {
@@ -46,13 +51,7 @@ function describe(p: Props): { text: string; tone: Tone; busy?: boolean; actions
   const { state } = p;
   switch (state.tag) {
     case 'ready':
-      if (state.notice === 'quote_changed') {
-        return { text: 'Your order total changed. Please review.', tone: 'warning', actions: [{ label: 'OK', onPress: p.onDismiss }] };
-      }
-      if (state.notice === 'payment_not_completed') {
-        return { text: "Your payment wasn't completed. You haven't been charged.", tone: 'warning', actions: [{ label: 'OK', onPress: p.onDismiss }] };
-      }
-      return null;
+      return state.notice ? { text: NOTICES[state.notice], tone: 'warning', actions: [{ label: 'OK', onPress: p.onDismiss }] } : null;
     case 'creating':
     case 'authorizing':
       return { text: 'Processing your payment…', tone: 'info', busy: true, actions: [] };
@@ -115,5 +114,5 @@ const styles = StyleSheet.create({
 const toneStyles = {
   info: StyleSheet.create({ box: { backgroundColor: colors.infoBg }, text: { color: colors.info } }),
   warning: StyleSheet.create({ box: { backgroundColor: colors.warningBg }, text: { color: colors.warning } }),
-  danger: StyleSheet.create({ box: { backgroundColor: '#fdecea' }, text: { color: colors.danger } }),
+  danger: StyleSheet.create({ box: { backgroundColor: colors.dangerBg }, text: { color: colors.danger } }),
 };

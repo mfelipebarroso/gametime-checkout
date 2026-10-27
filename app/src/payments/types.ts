@@ -9,7 +9,7 @@ export type PresentContext = {
   cardToken?: string;
 };
 
-/** Each method's SDK sits behind this interface (SPEC §7). Adapters never call the API. */
+/** Each method's SDK sits behind this interface. Adapters never call the payment API. */
 export interface PaymentAdapter {
   method: PaymentMethod;
   present(ctx: PresentContext): Promise<PresentResult>;

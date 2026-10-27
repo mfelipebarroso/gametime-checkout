@@ -49,7 +49,7 @@ describe('basic flow', () => {
     expect(countAuthorizations(h.db)).toBe(1);
   });
 
-  test('tok_test_decline → 200 with declined/CARD_DECLINED (D-07)', async () => {
+  test('tok_test_decline → 200 with declined/CARD_DECLINED', async () => {
     const attempt = await createAttempt(h);
     const res = await authorize(h, attempt.attemptId, 'tok_test_decline').expect(200);
     expect(res.body).toMatchObject({ status: 'declined', failureCode: 'CARD_DECLINED' });

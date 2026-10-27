@@ -1,4 +1,4 @@
-// Turbo Module spec for wallet capability detection (SPEC §2). Codegen reads this file.
+// Turbo Module spec for wallet capability detection. Codegen reads this file.
 import type { TurboModule } from 'react-native';
 import { TurboModuleRegistry } from 'react-native';
 

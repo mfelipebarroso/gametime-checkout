@@ -1,18 +1,30 @@
-// Contract types and constants shared by app and server (SPEC §1, §2, §4.1, §5).
-// Types and constants only: nothing here may depend on the app or server runtime.
+// Contract shared by the app and the server: types, constants and a few pure helpers.
+// Nothing here may depend on React Native or Node.
 
-export const CONTRACT_VERSION = 1;
-
-// ---------- Money (SPEC §1) ----------
+// ---------- Money ----------
 
 export type Currency = 'USD';
 /** Always an integer, in cents. */
 export type Money = { currency: Currency; minorUnits: number };
 
-/** Affirm shows only when total > this value (strictly greater). Exactly $100.00 does not show Affirm. */
+/** Affirm shows only when the total is strictly greater than this. Exactly $100.00 does not qualify. */
 export const AFFIRM_MIN_EXCLUSIVE_MINOR = 10000;
 
-// ---------- Order (SPEC §1) ----------
+/** 10350 → "$103.50". Display only, never do math with the result. */
+export function formatUsd(minor: number): string {
+  if (!Number.isInteger(minor)) {
+    throw new Error('formatUsd expects integer minor units');
+  }
+  const sign = minor < 0 ? '-' : '';
+  const abs = Math.abs(minor);
+  const dollars = Math.floor(abs / 100)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const cents = (abs % 100).toString().padStart(2, '0');
+  return `${sign}$${dollars}.${cents}`;
+}
+
+// ---------- Order ----------
 
 export type OrderStatus = 'open' | 'paid';
 
@@ -35,13 +47,12 @@ export const DEMO_ORDER_ID = 'order_demo';
 export const MIN_QUANTITY = 1;
 export const MAX_QUANTITY = 4;
 
-// ---------- Methods and attempts (SPEC §2, §4.1, §5) ----------
+// ---------- Methods and attempts ----------
 
 export type PaymentMethod = 'apple_pay' | 'google_pay' | 'affirm' | 'card';
 export const PAYMENT_METHODS: readonly PaymentMethod[] = ['apple_pay', 'google_pay', 'affirm', 'card'];
 
 export type AttemptStatus = 'awaiting_user' | 'processing' | 'succeeded' | 'declined' | 'cancelled';
-export const TERMINAL_ATTEMPT_STATUSES: readonly AttemptStatus[] = ['succeeded', 'declined', 'cancelled'];
 
 export type FailureCode = 'CARD_DECLINED' | 'INSUFFICIENT_FUNDS' | 'AFFIRM_DECLINED' | 'QUOTE_STALE';
 
@@ -58,7 +69,15 @@ export type Attempt = {
   updatedAt: string;
 };
 
-// ---------- Requests (SPEC §5) ----------
+/** Tokens the stubbed SDKs hand out. Card tokens look like `tok_test_<brand>_<last4>`. */
+export const TEST_TOKENS = {
+  applePay: 'tok_test_applepay',
+  googlePay: 'tok_test_googlepay',
+  /** The mock processor always declines this one (test card 4000 0000 0000 0002). */
+  decline: 'tok_test_decline',
+} as const;
+
+// ---------- Requests ----------
 
 export type UpdateOrderRequest = { quantity: number };
 
@@ -71,7 +90,10 @@ export type CreateAttemptRequest = {
 
 export type AuthorizeRequest = { sourceToken: string };
 
-// ---------- Errors (SPEC §5) ----------
+export const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
+export const IDEMPOTENT_REPLAYED_HEADER = 'Idempotent-Replayed';
+
+// ---------- Errors ----------
 
 export type ApiErrorCode =
   | 'VALIDATION_ERROR'
@@ -88,20 +110,29 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'INTERNAL';
 
-/** `quote` comes with QUOTE_STALE; `attempt` with attempt conflicts (see DECISIONS, phase 0). */
+/** `quote` comes with QUOTE_STALE, `attempt` with attempt conflicts, so the client can recover without a GET. */
 export type ApiErrorBody = {
   error: { code: ApiErrorCode; message: string; attempt?: Attempt; quote?: OrderQuote };
 };
 
-export const IDEMPOTENT_REPLAYED_HEADER = 'Idempotent-Replayed';
-export const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
-
-// ---------- Mock (SPEC §5.7) ----------
+// ---------- Mock controls (MOCK_MODE=1) ----------
 
 export type MockOutcome = 'approve' | 'decline' | 'processing' | 'drop_response';
 export type MockLatencyMs = 0 | 2000 | 8000;
-export type MockScenarioRequest = { nextOutcome?: MockOutcome; latencyMs?: MockLatencyMs };
-export type MockTotalOverrideMinor = 9999 | 10000 | 10001 | 15000 | null;
-export type MockOrderRequest = { totalOverrideMinor: MockTotalOverrideMinor };
+export type MockScenario = { nextOutcome: MockOutcome; latencyMs: MockLatencyMs };
+
+// ---------- Affirm return ----------
 
 export const RETURN_URL_BASE = 'gametime-demo://payment/return';
+
+export function returnUrl(attemptId: string, result?: 'approved' | 'cancelled'): string {
+  const query = `attemptId=${encodeURIComponent(attemptId)}`;
+  return `${RETURN_URL_BASE}?${result ? `${query}&result=${result}` : query}`;
+}
+
+// ---------- Logging ----------
+
+/** Any run of 12+ digits (a card number, say) becomes [REDACTED]. A safety net on top of the allowlists. */
+export function redact(value: string): string {
+  return value.replace(/\d{12,}/g, '[REDACTED]');
+}

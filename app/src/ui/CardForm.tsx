@@ -1,9 +1,9 @@
-// Card form (SPEC §3 UX). Validation runs on every change with the field's whole value (so autofill,
-// which pastes everything at once, is covered); errors appear on blur, never while typing; focus
-// advances when a field becomes complete and valid; Pay stays disabled until the card is valid.
+// Card form. Validation runs on every change against the field's whole value, so autofill (which fills
+// everything at once) is covered. Errors show on blur, never mid-typing; focus moves on when a field is
+// complete and valid; Pay stays disabled until the whole card is valid.
 
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { Keyboard, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import {
   CARD_ERROR_MESSAGES,
   cvcLengthFor,
@@ -17,6 +17,7 @@ import {
   type CardForm as CardFormValues,
   type FieldResult,
 } from '../domain/card';
+import { Button } from './Button';
 import { colors, radius } from './theme';
 
 type Field = keyof CardFormValues;
@@ -157,15 +158,7 @@ export function CardForm({ payLabel, locked, resetKey, now, onSubmit }: Props) {
         </View>
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={payLabel}
-        accessibilityState={{ disabled: !canSubmit }}
-        disabled={!canSubmit}
-        onPress={submit}
-        style={[styles.pay, !canSubmit && styles.payDisabled]}>
-        <Text style={styles.payText}>{payLabel}</Text>
-      </Pressable>
+      <Button label={payLabel} variant="primary" disabled={!canSubmit} onPress={submit} />
     </View>
   );
 }
@@ -223,7 +216,4 @@ const styles = StyleSheet.create({
   input: { flex: 1, fontSize: 17, paddingVertical: 12, color: colors.text, fontVariant: ['tabular-nums'] },
   brand: { color: colors.muted, fontWeight: '700', fontSize: 12 },
   error: { color: colors.danger, fontSize: 13 },
-  pay: { backgroundColor: colors.accent, borderRadius: radius.md, paddingVertical: 16, alignItems: 'center', marginTop: 4 },
-  payDisabled: { backgroundColor: colors.disabled },
-  payText: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

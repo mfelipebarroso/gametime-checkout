@@ -1,6 +1,9 @@
 import type { ApiErrorBody, ApiErrorCode, Attempt, OrderQuote } from '../../shared/index';
 
-/** A service result: the handler only serializes it. Business errors don't throw, so the transaction can commit. */
+/**
+ * What a service returns and a route serializes. Business errors are values, not exceptions, so a
+ * transaction can still commit the work it did before deciding to fail.
+ */
 export type ServiceResult = {
   status: number;
   body: unknown;
@@ -20,3 +23,15 @@ export function fail(
   const body: ApiErrorBody = { error: { code, message, ...extra } };
   return { status, body };
 }
+
+export const errors = {
+  orderNotFound: () => fail(404, 'ORDER_NOT_FOUND', 'Order not found'),
+  orderAlreadyPaid: () => fail(409, 'ORDER_ALREADY_PAID', 'This order has already been paid'),
+  attemptNotFound: () => fail(404, 'ATTEMPT_NOT_FOUND', 'Payment attempt not found'),
+  keyRequired: () => fail(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key header is required'),
+  keyReused: () => fail(409, 'IDEMPOTENCY_KEY_REUSED', 'Idempotency key was used with a different request'),
+  quoteStale: (extra: { quote: OrderQuote; attempt?: Attempt }) => fail(409, 'QUOTE_STALE', 'The order total changed', extra),
+  notAuthorizable: (attempt?: Attempt) =>
+    fail(409, 'ATTEMPT_NOT_AUTHORIZABLE', 'This payment attempt can no longer be authorized', attempt ? { attempt } : {}),
+  validation: (message: string) => fail(422, 'VALIDATION_ERROR', message),
+};

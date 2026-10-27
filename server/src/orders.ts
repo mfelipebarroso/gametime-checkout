@@ -1,5 +1,6 @@
 import type { OrderQuote } from '../../shared/index';
 import type { DB } from './db';
+import { errors, ok, type ServiceResult } from './http';
 
 export type OrderRow = {
   id: string;
@@ -21,7 +22,7 @@ export function getOrderRow(db: DB, id: string): OrderRow | undefined {
   return db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderRow | undefined;
 }
 
-/** With a dev menu override, the total is the forced value (shown as subtotal, no fees). */
+/** With a total override (mock only), the forced value is the subtotal and there are no fees. */
 export function toQuote(row: OrderRow): OrderQuote {
   const override = row.total_override_minor;
   const subtotal = override ?? row.quantity * row.unit_price_minor;
@@ -42,13 +43,25 @@ export function toQuote(row: OrderRow): OrderQuote {
   };
 }
 
-/** A version change cancels the order's `awaiting_user` attempts (SPEC §5.2), marking them QUOTE_STALE. */
-export function bumpVersion(db: DB, id: string, changes: { quantity?: number; totalOverrideMinor: number | null }, now: Date): void {
-  db.prepare(
-    `UPDATE orders SET version = version + 1, quantity = COALESCE(?, quantity), total_override_minor = ? WHERE id = ?`,
-  ).run(changes.quantity ?? null, changes.totalOverrideMinor, id);
-  db.prepare(
-    `UPDATE payment_attempts SET status = 'cancelled', failure_code = 'QUOTE_STALE', updated_at = ?
-     WHERE order_id = ? AND status = 'awaiting_user'`,
-  ).run(now.toISOString(), id);
+type OrderChanges = { quantity?: number; totalOverrideMinor: number | null };
+
+/**
+ * Applies the change and bumps the version. The order's `awaiting_user` attempts were priced on the old
+ * version, so they are cancelled as QUOTE_STALE.
+ */
+export function changeOrder(db: DB, id: string, changes: OrderChanges, now: Date): ServiceResult {
+  return db.transaction((): ServiceResult => {
+    const order = getOrderRow(db, id);
+    if (!order) return errors.orderNotFound();
+    if (order.status === 'paid') return errors.orderAlreadyPaid();
+
+    db.prepare(
+      `UPDATE orders SET version = version + 1, quantity = COALESCE(?, quantity), total_override_minor = ? WHERE id = ?`,
+    ).run(changes.quantity ?? null, changes.totalOverrideMinor, id);
+    db.prepare(
+      `UPDATE payment_attempts SET status = 'cancelled', failure_code = 'QUOTE_STALE', updated_at = ?
+       WHERE order_id = ? AND status = 'awaiting_user'`,
+    ).run(now.toISOString(), id);
+    return ok(toQuote(getOrderRow(db, id)!));
+  })();
 }

@@ -2,8 +2,6 @@ import type { PaymentMethod } from '@shared';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_BASE_URL, TIMEOUTS_MS } from '../api/config';
-import { createMockApi } from '../api/paymentApi';
 import { createCheckout } from '../checkout/createCheckout';
 import { attachLifecycle } from '../checkout/lifecycle';
 import { DevMenu } from '../dev/DevMenu';
@@ -53,7 +51,6 @@ export function CheckoutScreen() {
       isEligible: (method, quote) => eligibleMethods({ ...environmentRef.current, total: quote.total }).includes(method),
     }),
   );
-  const [mockApi] = useState(() => createMockApi(API_BASE_URL, TIMEOUTS_MS.default));
   const view = useSyncExternalStore(orchestrator.subscribe, orchestrator.getView);
   const { state, order } = view;
   const quote = order.status === 'loaded' ? order.quote : null;
@@ -79,7 +76,7 @@ export function CheckoutScreen() {
     return () => sub.remove();
   }, []);
 
-  // Eligibility reacts to every new quote (quantity, fees, dev total override) and environment change.
+  // Eligibility reacts to every new quote (quantity, fees) and to every environment change.
   const methods = useMemo<PaymentMethod[]>(
     () => (quote ? eligibleMethods({ ...environment, total: quote.total }) : []),
     [environment, quote],
@@ -184,7 +181,6 @@ export function CheckoutScreen() {
           onChangeOverrides={setOverrides}
           devicePlatform={DEVICE_PLATFORM}
           realCapabilities={realCapabilities}
-          mockApi={mockApi}
           orchestrator={orchestrator}
         />
       )}
@@ -198,7 +194,7 @@ const styles = StyleSheet.create({
   heading: { fontSize: 28, fontWeight: '800', color: colors.text },
   loader: { marginTop: 40 },
   sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: 4 },
-  errorBox: { backgroundColor: '#fdecea', borderRadius: 12, padding: 14, gap: 8 },
+  errorBox: { backgroundColor: colors.dangerBg, borderRadius: 12, padding: 14, gap: 8 },
   errorText: { color: colors.danger, fontWeight: '600' },
   link: { color: colors.info, fontWeight: '600' },
 });

@@ -3,9 +3,11 @@ import {
   type ApiErrorBody,
   type ApiErrorCode,
   type Attempt,
+  type AuthorizeRequest,
   type CreateAttemptRequest,
-  type MockScenarioRequest,
+  type MockScenario,
   type OrderQuote,
+  type UpdateOrderRequest,
 } from '@shared';
 
 export type ApiErrorKind = 'network' | 'timeout' | 'http';
@@ -53,8 +55,8 @@ export interface PaymentApi {
 }
 
 export interface MockApi {
-  getScenario(): Promise<Required<MockScenarioRequest>>;
-  setScenario(scenario: MockScenarioRequest): Promise<Required<MockScenarioRequest>>;
+  getScenario(): Promise<MockScenario>;
+  setScenario(changes: Partial<MockScenario>): Promise<MockScenario>;
   reset(): Promise<void>;
 }
 
@@ -120,12 +122,14 @@ export function createHttpClient(baseUrl: string, fetchImpl: FetchLike = fetch):
   };
 }
 
-export function createPaymentApi(baseUrl: string, timeouts: { default: number; create: number; authorize: number }, http: HttpClient = createHttpClient(baseUrl)): PaymentApi {
+export type Timeouts = { default: number; create: number; authorize: number };
+
+export function createPaymentApi(baseUrl: string, timeouts: Timeouts, http: HttpClient = createHttpClient(baseUrl)): PaymentApi {
   const enc = encodeURIComponent;
   return {
     getOrder: orderId => http(`/v1/orders/${enc(orderId)}`, { method: 'GET', timeoutMs: timeouts.default }),
     updateQuantity: (orderId, quantity) =>
-      http(`/v1/orders/${enc(orderId)}`, { method: 'PUT', body: { quantity }, timeoutMs: timeouts.default }),
+      http(`/v1/orders/${enc(orderId)}`, { method: 'PUT', body: { quantity } satisfies UpdateOrderRequest, timeoutMs: timeouts.default }),
     createAttempt: body =>
       http('/v1/payment-attempts', {
         method: 'POST',
@@ -136,7 +140,7 @@ export function createPaymentApi(baseUrl: string, timeouts: { default: number; c
     authorize: (attemptId, authorizeKey, sourceToken) =>
       http(`/v1/payment-attempts/${enc(attemptId)}/authorize`, {
         method: 'POST',
-        body: { sourceToken },
+        body: { sourceToken } satisfies AuthorizeRequest,
         idempotencyKey: authorizeKey,
         timeoutMs: timeouts.authorize,
       }),
@@ -147,11 +151,11 @@ export function createPaymentApi(baseUrl: string, timeouts: { default: number; c
   };
 }
 
-/** Mock-only routes (SPEC §5.7). Used by the dev menu under __DEV__. */
+/** Mock-only routes, used by the dev menu. */
 export function createMockApi(baseUrl: string, timeoutMs: number, http: HttpClient = createHttpClient(baseUrl)): MockApi {
   return {
     getScenario: () => http('/v1/mock/scenario', { method: 'GET', timeoutMs }),
-    setScenario: scenario => http('/v1/mock/scenario', { method: 'POST', body: scenario, timeoutMs }),
+    setScenario: changes => http('/v1/mock/scenario', { method: 'POST', body: changes, timeoutMs }),
     reset: async () => {
       await http('/v1/mock/reset', { method: 'POST', timeoutMs });
     },

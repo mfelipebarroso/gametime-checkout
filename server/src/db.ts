@@ -3,7 +3,7 @@ import { DEMO_ORDER_ID } from '../../shared/index';
 
 export type DB = Database.Database;
 
-// Schema from SPEC §9.
+// The UNIQUE constraints are what make "at most one authorization per attempt, one success per order" hold.
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY, version INTEGER NOT NULL, quantity INTEGER NOT NULL,

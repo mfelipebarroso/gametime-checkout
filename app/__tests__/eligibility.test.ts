@@ -1,10 +1,8 @@
-import type { PaymentMethod } from '@shared';
+import { formatUsd, type PaymentMethod } from '@shared';
 import { eligibleMethods, type EligibilityInput } from '../src/domain/eligibility';
-import { formatUSD } from '../src/domain/money';
 
 const usd = (minorUnits: number) => ({ currency: 'USD' as const, minorUnits });
 
-// SPEC §2 matrix (TEST-01).
 const matrix: Array<[string, EligibilityInput, PaymentMethod[]]> = [
   ['ios + apple pay, 150', { platform: 'ios', applePayAvailable: true, googlePayReady: false, total: usd(15000) }, ['apple_pay', 'affirm', 'card']],
   ['ios without apple pay, 150', { platform: 'ios', applePayAvailable: false, googlePayReady: false, total: usd(15000) }, ['affirm', 'card']],
@@ -40,7 +38,7 @@ describe('eligibleMethods', () => {
   });
 });
 
-describe('formatUSD', () => {
+describe('formatUsd', () => {
   test.each([
     [10350, '$103.50'],
     [5175, '$51.75'],
@@ -50,10 +48,10 @@ describe('formatUSD', () => {
     [0, '$0.00'],
     [123456789, '$1,234,567.89'],
   ])('%i → %s', (minor, expected) => {
-    expect(formatUSD(minor)).toBe(expected);
+    expect(formatUsd(minor)).toBe(expected);
   });
 
   test('rejects non-integer values', () => {
-    expect(() => formatUSD(10.5)).toThrow();
+    expect(() => formatUsd(10.5)).toThrow();
   });
 });

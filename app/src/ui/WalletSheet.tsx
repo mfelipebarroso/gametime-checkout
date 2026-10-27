@@ -2,7 +2,8 @@ import { useSyncExternalStore } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatMoney } from '../domain/money';
 import type { WalletSheetController } from '../payments/walletSheet';
-import { colors, radius } from './theme';
+import { Button } from './Button';
+import { colors } from './theme';
 
 /** Simulated native payment sheet (stubbed SDK): amount, a fake card, confirm and cancel. */
 export function WalletSheet({ controller }: { controller: WalletSheetController }) {
@@ -26,12 +27,11 @@ export function WalletSheet({ controller }: { controller: WalletSheetController 
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.total}>{formatMoney(request.amount)}</Text>
             </View>
-            <Pressable
-              accessibilityRole="button"
+            <Button
+              label={isApple ? 'Pay with Face ID' : 'Continue'}
+              variant={isApple ? 'apple' : 'google'}
               onPress={() => controller.confirm()}
-              style={[styles.confirm, isApple ? styles.confirmApple : styles.confirmGoogle]}>
-              <Text style={styles.confirmText}>{isApple ? 'Pay with Face ID' : 'Continue'}</Text>
-            </Pressable>
+            />
             <Text style={styles.note}>Stubbed sheet: no real wallet is charged.</Text>
           </View>
         )}
@@ -54,16 +54,12 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36, gap: 12 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   brand: { fontSize: 22, fontWeight: '700', color: colors.text },
-  cancel: { color: '#1a73e8', fontSize: 16 },
+  cancel: { color: colors.google, fontSize: 16 },
   row: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingVertical: 10 },
   rowLabel: { color: colors.muted, fontSize: 15 },
   rowValue: { color: colors.text, fontSize: 15 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
   totalLabel: { fontSize: 17, fontWeight: '600', color: colors.text },
   total: { fontSize: 17, fontWeight: '700', color: colors.text },
-  confirm: { borderRadius: radius.md, paddingVertical: 16, alignItems: 'center' },
-  confirmApple: { backgroundColor: colors.black },
-  confirmGoogle: { backgroundColor: '#1a73e8' },
-  confirmText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   note: { color: colors.muted, fontSize: 12, textAlign: 'center' },
 });

@@ -1,5 +1,5 @@
-// Persisted attempt snapshot (SPEC §6.1). It holds identity and phase only: never the card number,
-// CVC, expiry, source token or any form data (invariant 4).
+// Persisted attempt snapshot. It holds identity and phase only: never the card number, CVC, expiry,
+// source token or any form data.
 
 import { PAYMENT_METHODS, type PaymentMethod } from '@shared';
 import type { Logger } from '../logger';

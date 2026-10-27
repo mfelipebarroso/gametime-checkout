@@ -1,4 +1,4 @@
-// Wires the three reconciliation triggers to the orchestrator (SPEC §6.3): AppState → active,
+// Wires the three reconciliation triggers to the orchestrator: AppState → active,
 // deep links (running and cold start) and the cold start itself. All of them end in the same
 // single-flight reconcile().
 

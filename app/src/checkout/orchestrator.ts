@@ -1,7 +1,7 @@
-// Checkout orchestrator (SPEC §6). Owns the UI state machine, the persisted attempt snapshot and every
-// payment request. Invariants it upholds:
+// Checkout orchestrator: owns the UI state machine, the persisted attempt snapshot and every payment
+// request. The rules it keeps:
 // - the snapshot is saved before any request and before opening a sheet or browser;
-// - uncertainty (timeout, network, 5xx, lost response) leads to reconciliation, never a new key;
+// - uncertainty (timeout, network, 5xx, lost response) leads to reconciliation, never to a new key;
 // - deep links, sheet results and foregrounding are only signals; the server decides the outcome.
 
 import type { Attempt, CreateAttemptRequest, OrderQuote, PaymentMethod } from '@shared';
@@ -12,21 +12,18 @@ import {
   isWalletMethod,
   type CheckoutAction,
   type CheckoutState,
+  type ReadyNotice,
   type ReconcileReason,
   type RetryReason,
 } from '../domain/checkout.types';
 import type { LogEvent, Logger } from '../logger';
-import type { PaymentAdapter } from '../payments/types';
+import type { PaymentAdapter, PresentResult } from '../payments/types';
 import type { AttemptSnapshot, AttemptStore } from './attemptStore';
+import { parseReturnUrl } from './returnUrl';
 
 export type OrderLoad = { status: 'loading' } | { status: 'loaded'; quote: OrderQuote } | { status: 'error' };
 
-export type CheckoutView = {
-  state: CheckoutState;
-  order: OrderLoad;
-  /** Read-only copy for the dev menu. It never holds sensitive fields because none are stored. */
-  snapshot: AttemptSnapshot | null;
-};
+export type CheckoutView = { state: CheckoutState; order: OrderLoad };
 
 export type OrchestratorDeps = {
   api: PaymentApi;
@@ -39,9 +36,9 @@ export type OrchestratorDeps = {
   sleep: (ms: number) => Promise<void>;
   /** Eligibility with the current capabilities (and dev overrides) for a quote. */
   isEligible: (method: PaymentMethod, quote: OrderQuote) => boolean;
-  /** Reconciliation backoff between GETs (SPEC §6.4). */
+  /** Delays between reconciliation GETs. */
   backoffMs?: readonly number[];
-  /** Pause between same-key create retries (SPEC §6.2 step 3). */
+  /** Pause between same-key create retries. */
   createRetryDelayMs?: number;
 };
 
@@ -50,24 +47,6 @@ const CREATE_ATTEMPTS = 3; // first try + 2 retries with the same key
 
 type Mapped = 'final' | 'pending' | 'awaiting_user';
 type StepResult = 'done' | 'uncertain';
-
-const RETURN_URL_RE = /^gametime-demo:\/\/payment\/return(?:\?(.*))?$/;
-
-/** Parses `gametime-demo://payment/return?attemptId=…&result=…` without relying on URL support. */
-export function parseReturnUrl(url: string): { attemptId: string | null; result: string | null } | null {
-  const match = RETURN_URL_RE.exec(url);
-  if (!match) {
-    return null;
-  }
-  const params: Record<string, string> = {};
-  for (const pair of (match[1] ?? '').split('&')) {
-    const [k, v = ''] = pair.split('=');
-    if (k) {
-      params[decodeURIComponent(k)] = decodeURIComponent(v);
-    }
-  }
-  return { attemptId: params.attemptId ?? null, result: params.result ?? null };
-}
 
 function retryReason(err: unknown): RetryReason {
   if (err instanceof ApiError) {
@@ -80,7 +59,7 @@ export class CheckoutOrchestrator {
   private state: CheckoutState = initialCheckoutState;
   private order: OrderLoad = { status: 'loading' };
   private snapshot: AttemptSnapshot | null = null;
-  /** In memory only (invariant 4). Lets reconciliation retry the authorize with the same key. */
+  /** Memory only, never persisted. Lets reconciliation retry the authorize with the same key. */
   private pendingToken: string | null = null;
   /** A create/authorize request or a wallet sheet is in flight in this process. */
   private localOp = false;
@@ -99,7 +78,7 @@ export class CheckoutOrchestrator {
     );
     this.backoffMs = deps.backoffMs ?? DEFAULT_BACKOFF_MS;
     this.createRetryDelayMs = deps.createRetryDelayMs ?? 1000;
-    this.view = this.buildView();
+    this.view = { state: this.state, order: this.order };
   }
 
   // ---------- Store interface (useSyncExternalStore) ----------
@@ -111,13 +90,9 @@ export class CheckoutOrchestrator {
     return () => this.listeners.delete(listener);
   };
 
-  private buildView(): CheckoutView {
-    return { state: this.state, order: this.order, snapshot: this.snapshot ? { ...this.snapshot } : null };
-  }
-
   private emit(): void {
-    this.view = this.buildView();
-    this.listeners.forEach(l => l());
+    this.view = { state: this.state, order: this.order };
+    this.listeners.forEach(listener => listener());
   }
 
   private dispatch(action: CheckoutAction): void {
@@ -131,7 +106,7 @@ export class CheckoutOrchestrator {
   private log(event: LogEvent, attrs: Record<string, unknown> = {}): void {
     const s = this.snapshot;
     this.deps.logger.log(event, {
-      ...(s ? { attemptId: s.attemptId ?? undefined, clientAttemptId: s.clientAttemptId, method: s.method, phase: s.phase, orderVersion: s.orderVersion } : {}),
+      ...(s && { attemptId: s.attemptId ?? undefined, clientAttemptId: s.clientAttemptId, method: s.method, phase: s.phase, orderVersion: s.orderVersion }),
       ...attrs,
     });
   }
@@ -162,9 +137,36 @@ export class CheckoutOrchestrator {
     }
   }
 
+  /** Forgets the local attempt and goes back to `ready`. */
+  private async resetToReady(notice?: ReadyNotice): Promise<void> {
+    await this.clearSnapshot();
+    this.dispatch({ type: 'RESET_TO_READY', notice });
+  }
+
+  /**
+   * Cancels an attempt that was never authorized, then forgets it. A failed cancel is harmless: the
+   * next create cancels it on the server anyway.
+   */
+  private async discardAttempt(attemptId: string | null): Promise<void> {
+    if (attemptId) {
+      await this.deps.api.cancelAttempt(attemptId).catch(() => undefined);
+    }
+    await this.clearSnapshot();
+  }
+
+  /** Marks a create/authorize/sheet as running in this process, so foregrounding doesn't reconcile over it. */
+  private async withLocalOp(work: () => Promise<void>): Promise<void> {
+    this.localOp = true;
+    try {
+      await work();
+    } finally {
+      this.localOp = false;
+    }
+  }
+
   // ---------- Boot and order ----------
 
-  /** Cold start: load the snapshot, load the order, and reconcile before enabling actions (SPEC §6.3). */
+  /** Cold start: load the snapshot and the order, and reconcile before enabling any action. */
   init(): Promise<void> {
     if (!this.initPromise) {
       this.initPromise = this.boot();
@@ -217,7 +219,7 @@ export class CheckoutOrchestrator {
     this.emit();
   }
 
-  /** Reloads the order (retry after a load error, or after a dev menu total override). */
+  /** "Try again" after the order failed to load. */
   async refreshOrder(): Promise<void> {
     await this.loadOrder();
   }
@@ -229,7 +231,7 @@ export class CheckoutOrchestrator {
     }
   }
 
-  // ---------- Start payment (SPEC §6.2) ----------
+  // ---------- Start payment ----------
 
   /**
    * One tap starts the whole flow. The guard and the START_PAYMENT dispatch are synchronous, so a
@@ -247,10 +249,9 @@ export class CheckoutOrchestrator {
       return;
     }
     this.dispatch({ type: 'START_PAYMENT', method });
-    this.localOp = true;
-    this.pendingToken = method === 'card' ? options.cardToken ?? null : null;
 
-    try {
+    await this.withLocalOp(async () => {
+      this.pendingToken = method === 'card' ? options.cardToken ?? null : null;
       const saved = await this.persist({
         v: 1,
         clientAttemptId: this.deps.newId(),
@@ -264,30 +265,22 @@ export class CheckoutOrchestrator {
         startedAt: this.deps.now().toISOString(),
       });
       if (!saved) {
-        // Without a persisted identity we must not send anything (invariant 3).
-        await this.clearSnapshot();
-        this.dispatch({ type: 'RESET_TO_READY' });
+        // Without a persisted identity nothing may be sent.
+        await this.resetToReady();
         return;
       }
       await this.runCreate();
-    } finally {
-      this.localOp = false;
-    }
+    });
   }
 
-  /** "Try again" from retryable_error: repeats the create with the SAME key. */
+  /** "Try again" from retryable_error: repeats the create with the same key. */
   async retry(): Promise<void> {
     const snap = this.snapshot;
     if (this.state.tag !== 'retryable_error' || !snap || this.localOp) {
       return;
     }
     this.dispatch({ type: 'RETRY', method: snap.method });
-    this.localOp = true;
-    try {
-      await this.runCreate();
-    } finally {
-      this.localOp = false;
-    }
+    await this.withLocalOp(() => this.runCreate());
   }
 
   /** Gives up from retryable_error. Safe: an `awaiting_user` attempt is never authorized without a token. */
@@ -296,10 +289,7 @@ export class CheckoutOrchestrator {
     if (this.state.tag !== 'retryable_error' || !snap) {
       return;
     }
-    if (snap.attemptId) {
-      await this.cancelQuietly(snap.attemptId);
-    }
-    await this.clearSnapshot();
+    await this.discardAttempt(snap.attemptId);
     this.dispatch({ type: 'RESET_TO_READY' });
   }
 
@@ -331,8 +321,7 @@ export class CheckoutOrchestrator {
     }
 
     if (!attempt) {
-      const next = await this.handleCreateError(lastError);
-      if (next === 'reconcile') {
+      if ((await this.handleCreateError(lastError)) === 'reconcile') {
         await this.reconcile('processing');
       }
       return;
@@ -383,8 +372,7 @@ export class CheckoutOrchestrator {
       return 'done';
     }
     this.log('payment_create_rejected', { code: err instanceof ApiError ? err.code ?? err.message : 'unknown' });
-    await this.clearSnapshot();
-    this.dispatch({ type: 'RESET_TO_READY' });
+    await this.resetToReady();
     return 'done';
   }
 
@@ -402,85 +390,60 @@ export class CheckoutOrchestrator {
     const quote = await this.loadOrder();
     if (quote?.status === 'paid') {
       await this.showPaidOrder(quote);
-      return;
+    } else {
+      await this.resetToReady();
     }
-    await this.clearSnapshot();
-    this.dispatch({ type: 'RESET_TO_READY' });
   }
 
-  // ---------- Present (SPEC §6.2 step 4, §7) ----------
+  // ---------- Present ----------
 
   private async present(attempt: Attempt): Promise<void> {
-    const snap = this.snapshot!;
-    const adapter = this.deps.adapters[snap.method];
-    const ctx = { attemptId: attempt.attemptId, amount: attempt.amount };
+    const { attemptId, amount } = attempt;
+    const method = this.snapshot!.method;
 
-    if (isWalletMethod(snap.method)) {
-      this.dispatch({ type: 'WALLET_PRESENTED', attemptId: attempt.attemptId });
+    if (method === 'affirm') {
+      // Persist `redirected` before leaving the app; the result comes back through a deep link or AppState.
+      await this.persist({ ...this.snapshot!, phase: 'redirected' });
+      this.dispatch({ type: 'AFFIRM_REDIRECTED', attemptId });
       this.log('provider_presented');
-      let result;
-      try {
-        result = await adapter.present(ctx);
-      } catch {
-        result = { kind: 'cancelled' as const };
-      }
-      if (result.kind !== 'token') {
+      await this.openAffirm(attemptId, amount);
+      return;
+    }
+
+    const wallet = isWalletMethod(method);
+    if (wallet) {
+      this.dispatch({ type: 'WALLET_PRESENTED', attemptId });
+      this.log('provider_presented');
+    }
+    const result = await this.deps.adapters[method]
+      .present({ attemptId, amount, cardToken: this.pendingToken ?? undefined })
+      .catch((): PresentResult => ({ kind: 'cancelled' }));
+
+    if (result.kind !== 'token') {
+      if (wallet) {
         this.log('provider_cancelled');
-        await this.cancelQuietly(attempt.attemptId);
-        await this.clearSnapshot();
-        this.dispatch({ type: 'PAYMENT_CANCELLED' });
-        return;
       }
-      await this.authorizeAndSettle(attempt.attemptId, result.sourceToken);
+      await this.discardAttempt(attemptId);
+      this.dispatch(wallet ? { type: 'PAYMENT_CANCELLED' } : { type: 'RESET_TO_READY' });
       return;
     }
-
-    if (snap.method === 'card') {
-      const result = await adapter.present({ ...ctx, cardToken: this.pendingToken ?? undefined });
-      if (result.kind !== 'token') {
-        await this.cancelQuietly(attempt.attemptId);
-        await this.clearSnapshot();
-        this.dispatch({ type: 'RESET_TO_READY' });
-        return;
-      }
-      await this.authorizeAndSettle(attempt.attemptId, result.sourceToken);
-      return;
+    if ((await this.authorizeOnce(attemptId, result.sourceToken)) === 'uncertain') {
+      await this.reconcile('timeout');
     }
-
-    // Affirm: persist `redirected` before leaving the app; the result comes back via §6.3.
-    await this.persist({ ...snap, phase: 'redirected' });
-    this.dispatch({ type: 'AFFIRM_REDIRECTED', attemptId: attempt.attemptId });
-    this.log('provider_presented');
-    await this.openAffirm(attempt.attemptId, attempt.amount);
   }
 
   private async openAffirm(attemptId: string, amount: Attempt['amount']): Promise<void> {
-    // Affirm runs outside the app: foregrounding must be free to reconcile.
+    // Affirm runs outside the app, so foregrounding must be free to reconcile.
     this.localOp = false;
     try {
       await this.deps.adapters.affirm.present({ attemptId, amount });
     } catch {
-      await this.cancelQuietly(attemptId);
-      await this.clearSnapshot();
+      await this.discardAttempt(attemptId);
       this.dispatch({ type: 'RESET_TO_READY', notice: 'payment_not_completed' });
     }
   }
 
-  private async cancelQuietly(attemptId: string): Promise<void> {
-    try {
-      await this.deps.api.cancelAttempt(attemptId);
-    } catch {
-      // Harmless: the attempt was never authorized, and the next create cancels it server-side.
-    }
-  }
-
-  // ---------- Authorize (SPEC §6.2 step 5) ----------
-
-  private async authorizeAndSettle(attemptId: string, sourceToken: string): Promise<void> {
-    if ((await this.authorizeOnce(attemptId, sourceToken)) === 'uncertain') {
-      await this.reconcile('timeout');
-    }
-  }
+  // ---------- Authorize ----------
 
   /**
    * Sends the authorize with the attempt's persisted key. A definitive answer is applied ('done');
@@ -496,8 +459,7 @@ export class CheckoutOrchestrator {
 
     try {
       const attempt = await this.deps.api.authorize(attemptId, snap.authorizeKey, sourceToken);
-      const mapped = await this.mapAttempt(attempt);
-      if (mapped === 'final') {
+      if ((await this.mapAttempt(attempt)) === 'final') {
         return 'done';
       }
       this.dispatch({ type: 'RECONCILE_STARTED', attemptId, reason: 'processing' });
@@ -523,23 +485,24 @@ export class CheckoutOrchestrator {
     }
   }
 
-  /** Applies a server attempt status to the UI (SPEC §4.2 mapping). */
+  /** Applies a server attempt status to the UI. */
   private async mapAttempt(attempt: Attempt): Promise<Mapped> {
-    switch (attempt.status) {
+    const { attemptId, status, failureCode } = attempt;
+    switch (status) {
       case 'succeeded':
-        // Update the UI first, then clear the snapshot (SPEC §6.2 step 5).
-        this.dispatch({ type: 'PAYMENT_SUCCEEDED', attemptId: attempt.attemptId });
-        this.log('payment_succeeded', { attemptId: attempt.attemptId, status: attempt.status });
+        // Update the UI first, then clear the snapshot.
+        this.dispatch({ type: 'PAYMENT_SUCCEEDED', attemptId });
+        this.log('payment_succeeded', { attemptId, status });
         await this.clearSnapshot();
         this.loadOrder().catch(() => undefined); // refresh to `paid` in the background
         return 'final';
       case 'declined':
-        this.dispatch({ type: 'PAYMENT_DECLINED', attemptId: attempt.attemptId, code: attempt.failureCode });
-        this.log('payment_declined', { attemptId: attempt.attemptId, code: attempt.failureCode });
+        this.dispatch({ type: 'PAYMENT_DECLINED', attemptId, code: failureCode });
+        this.log('payment_declined', { attemptId, code: failureCode });
         await this.clearSnapshot();
         return 'final';
       case 'cancelled':
-        if (attempt.failureCode === 'QUOTE_STALE') {
+        if (failureCode === 'QUOTE_STALE') {
           await this.handleQuoteChanged(undefined);
         } else {
           await this.clearSnapshot();
@@ -553,7 +516,7 @@ export class CheckoutOrchestrator {
     }
   }
 
-  // ---------- Reconcile (SPEC §6.4) ----------
+  // ---------- Reconcile ----------
 
   /** Single-flight: concurrent triggers share the same run. */
   reconcile(reason: ReconcileReason): Promise<void> {
@@ -578,8 +541,7 @@ export class CheckoutOrchestrator {
     this.log('payment_reconciliation_started', { code: reason });
     let reauthorized = false;
 
-    const delays = [0, ...this.backoffMs];
-    for (const delay of delays) {
+    for (const delay of [0, ...this.backoffMs]) {
       if (delay > 0) {
         await this.deps.sleep(delay);
       }
@@ -588,7 +550,7 @@ export class CheckoutOrchestrator {
         return;
       }
 
-      // Step 1: the create may have landed without its response; replaying it recovers the attemptId.
+      // The create may have landed without its response; replaying it recovers the attemptId.
       if (!snap.attemptId) {
         const recovered = await this.recoverAttemptId(snap);
         if (recovered === 'done') {
@@ -601,21 +563,18 @@ export class CheckoutOrchestrator {
       const current = this.snapshot!;
       const attemptId = current.attemptId!;
 
-      // Step 2: ask the server.
       let attempt: Attempt;
       try {
         attempt = await this.deps.api.getAttempt(attemptId);
       } catch (err) {
         if (isHttpError(err, 'ATTEMPT_NOT_FOUND')) {
-          // The server has no record (e.g. demo reset): nothing was charged.
-          await this.clearSnapshot();
-          this.dispatch({ type: 'RESET_TO_READY', notice: 'payment_not_completed' });
+          // The server has no record (e.g. after a demo reset): nothing was charged.
+          await this.resetToReady('payment_not_completed');
           return;
         }
         continue;
       }
 
-      // Step 3: map it.
       const mapped = await this.mapAttempt(attempt);
       if (mapped === 'final') {
         return;
@@ -628,7 +587,7 @@ export class CheckoutOrchestrator {
         return;
       }
       if (current.phase === 'authorizing' && this.pendingToken && !reauthorized) {
-        // The app never died, so the token is still here: retry with the SAME key.
+        // The app never died, so the token is still here: retry with the same key.
         reauthorized = true;
         if ((await this.authorizeOnce(attemptId, this.pendingToken)) === 'done') {
           return;
@@ -656,9 +615,8 @@ export class CheckoutOrchestrator {
       if (isUncertain(err)) {
         return 'retry';
       }
-      const next = await this.handleCreateError(err);
-      // ATTEMPT_IN_PROGRESS switched the snapshot to the existing attempt: keep reconciling it.
-      return next === 'reconcile' ? 'recovered' : 'done';
+      // ATTEMPT_IN_PROGRESS switched the snapshot to the existing attempt: keep reconciling that one.
+      return (await this.handleCreateError(err)) === 'reconcile' ? 'recovered' : 'done';
     }
   }
 
@@ -667,8 +625,7 @@ export class CheckoutOrchestrator {
     try {
       const attempt = await this.deps.api.cancelAttempt(attemptId);
       if (attempt.status === 'cancelled' && attempt.failureCode !== 'QUOTE_STALE') {
-        await this.clearSnapshot();
-        this.dispatch({ type: 'RESET_TO_READY', notice: 'payment_not_completed' });
+        await this.resetToReady('payment_not_completed');
         return 'done';
       }
       return (await this.mapAttempt(attempt)) === 'final' ? 'done' : 'uncertain';
@@ -678,30 +635,35 @@ export class CheckoutOrchestrator {
     }
   }
 
-  // ---------- Affirm pending (SPEC §6.4) ----------
+  // ---------- Affirm pending ----------
+
+  /** The Affirm attempt the fan came back from without finishing, if that is where we are. */
+  private pendingAffirmAttemptId(): string | null {
+    const pending = this.state.tag === 'reconciling' && this.state.reason === 'affirm_pending';
+    return pending ? this.snapshot?.attemptId ?? null : null;
+  }
 
   async continueWithAffirm(): Promise<void> {
-    const snap = this.snapshot;
-    if (this.state.tag !== 'reconciling' || this.state.reason !== 'affirm_pending' || !snap?.attemptId) {
+    const attemptId = this.pendingAffirmAttemptId();
+    if (!attemptId) {
       return;
     }
-    this.dispatch({ type: 'AFFIRM_REDIRECTED', attemptId: snap.attemptId });
-    await this.openAffirm(snap.attemptId, { currency: 'USD', minorUnits: snap.amountMinor });
+    this.dispatch({ type: 'AFFIRM_REDIRECTED', attemptId });
+    await this.openAffirm(attemptId, { currency: 'USD', minorUnits: this.snapshot!.amountMinor });
   }
 
   async chooseAnotherMethod(): Promise<void> {
-    const snap = this.snapshot;
-    if (this.state.tag !== 'reconciling' || this.state.reason !== 'affirm_pending' || !snap?.attemptId) {
+    const attemptId = this.pendingAffirmAttemptId();
+    if (!attemptId) {
       return;
     }
     try {
-      const attempt = await this.deps.api.cancelAttempt(snap.attemptId);
+      const attempt = await this.deps.api.cancelAttempt(attemptId);
       if (attempt.status === 'cancelled') {
-        await this.clearSnapshot();
-        this.dispatch({ type: 'RESET_TO_READY' });
+        await this.resetToReady();
         return;
       }
-      // The user approved in the meantime: show what the server says.
+      // The fan approved in the meantime: show what the server says.
       if ((await this.mapAttempt(attempt)) !== 'final') {
         await this.reconcile('manual');
       }
@@ -710,7 +672,7 @@ export class CheckoutOrchestrator {
     }
   }
 
-  // ---------- Quantity (SPEC §2 "Total change", ORDER-01) ----------
+  // ---------- Quantity ----------
 
   async changeQuantity(quantity: number): Promise<void> {
     if (!canChangeQuantity(this.state) || this.order.status !== 'loaded' || this.localOp || this.reconcilePromise) {
@@ -721,8 +683,7 @@ export class CheckoutOrchestrator {
       this.applyQuote(quote);
       if (this.snapshot) {
         // The server cancelled the pending Affirm attempt when the version changed.
-        await this.clearSnapshot();
-        this.dispatch({ type: 'RESET_TO_READY' });
+        await this.resetToReady();
       }
     } catch (err) {
       if (isHttpError(err, 'ORDER_ALREADY_PAID')) {
@@ -731,7 +692,7 @@ export class CheckoutOrchestrator {
     }
   }
 
-  // ---------- External signals (SPEC §6.3) ----------
+  // ---------- External signals ----------
 
   /** AppState became `active`. Skipped while a sheet or request is in flight in this process. */
   async onAppActive(): Promise<void> {

@@ -6,17 +6,17 @@ import {
   MAX_QUANTITY,
   MIN_QUANTITY,
   PAYMENT_METHODS,
-  RETURN_URL_BASE,
-  type Attempt,
+  returnUrl,
+  type PaymentMethod,
 } from '../../shared/index';
 import { renderAffirmPage } from './affirmPage';
 import { AttemptsService } from './attempts';
 import { systemClock, type Clock } from './clock';
 import { resetDb, type DB } from './db';
-import { fail, ok, type ServiceResult } from './http';
+import { errors, fail, ok, type ServiceResult } from './http';
 import { requestLogger, stdoutSink, type LogSink } from './logger';
 import { MockProcessor } from './mockProcessor';
-import { bumpVersion, getOrderRow, toQuote } from './orders';
+import { changeOrder, getOrderRow, toQuote } from './orders';
 
 export type AppOptions = {
   db: DB;
@@ -30,7 +30,7 @@ const CreateBody = z.object({
   clientAttemptId: z.uuid(),
   order: z.object({ id: z.string().min(1).max(100), version: z.number().int().positive() }),
   amount: z.object({ currency: z.literal('USD'), minorUnits: z.number().int().positive() }),
-  method: z.enum(PAYMENT_METHODS as [string, ...string[]]).transform(m => m as Attempt['method']),
+  method: z.enum(PAYMENT_METHODS as [PaymentMethod, ...PaymentMethod[]]),
 });
 const AuthorizeBody = z.object({ sourceToken: z.string().regex(/^tok_test_[a-z0-9_]{1,64}$/) });
 const UpdateOrderBody = z.object({ quantity: z.number().int().min(MIN_QUANTITY).max(MAX_QUANTITY) });
@@ -41,7 +41,6 @@ const ScenarioBody = z.object({
 const MockOrderBody = z.object({
   totalOverrideMinor: z.union([z.literal(9999), z.literal(10000), z.literal(10001), z.literal(15000), z.null()]),
 });
-const AttemptIdParam = /^pat_[0-9a-f-]{36}$/;
 const KeyHeader = z.string().min(8).max(200);
 
 function send(res: Response, result: ServiceResult): void {
@@ -54,12 +53,16 @@ function send(res: Response, result: ServiceResult): void {
 function validationError(res: Response, error: z.ZodError): void {
   // Field paths only: never echo values (they may contain a token).
   const fields = [...new Set(error.issues.map(i => i.path.join('.') || '(body)'))].join(', ');
-  send(res, fail(422, 'VALIDATION_ERROR', `Invalid request: ${fields}`));
+  send(res, errors.validation(`Invalid request: ${fields}`));
 }
 
-function returnUrl(attemptId: string, result: 'approved' | 'cancelled'): string {
-  // Fixed on the server: never taken from the query string (prevents an open redirect).
-  return `${RETURN_URL_BASE}?attemptId=${encodeURIComponent(attemptId)}&result=${result}`;
+/** The drop_response scenario: the result is committed, but the app never hears back. */
+function dropConnection(req: Request): void {
+  req.socket.destroy();
+}
+
+function notFoundPage(res: Response): void {
+  res.status(404).type('text/plain').send('Checkout not found');
 }
 
 export function createApp(options: AppOptions) {
@@ -92,48 +95,37 @@ export function createApp(options: AppOptions) {
 
   app.get('/v1/orders/:orderId', (req, res) => {
     const order = getOrderRow(db, req.params.orderId);
-    send(res, order ? ok(toQuote(order)) : fail(404, 'ORDER_NOT_FOUND', 'Order not found'));
+    send(res, order ? ok(toQuote(order)) : errors.orderNotFound());
   });
 
   app.put('/v1/orders/:orderId', (req, res) => {
     const parsed = UpdateOrderBody.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error);
-    const result = db.transaction((): ServiceResult => {
-      const order = getOrderRow(db, req.params.orderId);
-      if (!order) return fail(404, 'ORDER_NOT_FOUND', 'Order not found');
-      if (order.status === 'paid') return fail(409, 'ORDER_ALREADY_PAID', 'This order has already been paid');
-      // Changing the quantity returns to "Quantity" mode (drops the dev menu override).
-      bumpVersion(db, order.id, { quantity: parsed.data.quantity, totalOverrideMinor: null }, clock.now());
-      return ok(toQuote(getOrderRow(db, order.id)!));
-    })();
-    send(res, result);
+    // A quantity change also drops any mock total override.
+    send(res, changeOrder(db, req.params.orderId, { quantity: parsed.data.quantity, totalOverrideMinor: null }, clock.now()));
   });
 
   // ---------- Attempts ----------
 
   app.post('/v1/payment-attempts', (req, res) => {
     const key = req.header(IDEMPOTENCY_KEY_HEADER);
-    if (!key) return send(res, fail(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key header is required'));
+    if (!key) return send(res, errors.keyRequired());
     const parsed = CreateBody.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error);
     if (key !== parsed.data.clientAttemptId) {
-      return send(res, fail(422, 'VALIDATION_ERROR', 'Idempotency-Key must equal clientAttemptId'));
+      return send(res, errors.validation('Idempotency-Key must equal clientAttemptId'));
     }
     send(res, attempts.create(key, parsed.data));
   });
 
   app.post('/v1/payment-attempts/:attemptId/authorize', async (req, res) => {
     const key = req.header(IDEMPOTENCY_KEY_HEADER);
-    if (!key) return send(res, fail(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key header is required'));
-    if (!KeyHeader.safeParse(key).success) return send(res, fail(422, 'VALIDATION_ERROR', 'Invalid Idempotency-Key'));
+    if (!key) return send(res, errors.keyRequired());
+    if (!KeyHeader.safeParse(key).success) return send(res, errors.validation('Invalid Idempotency-Key'));
     const parsed = AuthorizeBody.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error);
     const result = await attempts.authorizeSafe(req.params.attemptId, key, parsed.data.sourceToken);
-    if (result.dropResponse) {
-      // Result already committed: simulates "the server charged, the app never knew".
-      req.socket.destroy();
-      return;
-    }
+    if (result.dropResponse) return dropConnection(req);
     send(res, result);
   });
 
@@ -162,14 +154,7 @@ export function createApp(options: AppOptions) {
     app.put('/v1/mock/orders/:orderId', (req, res) => {
       const parsed = MockOrderBody.safeParse(req.body);
       if (!parsed.success) return validationError(res, parsed.error);
-      const result = db.transaction((): ServiceResult => {
-        const order = getOrderRow(db, req.params.orderId);
-        if (!order) return fail(404, 'ORDER_NOT_FOUND', 'Order not found');
-        if (order.status === 'paid') return fail(409, 'ORDER_ALREADY_PAID', 'This order has already been paid');
-        bumpVersion(db, order.id, { totalOverrideMinor: parsed.data.totalOverrideMinor }, clock.now());
-        return ok(toQuote(getOrderRow(db, order.id)!));
-      })();
-      send(res, result);
+      send(res, changeOrder(db, req.params.orderId, parsed.data, clock.now()));
     });
 
     app.post('/v1/mock/reset', (_req, res) => {
@@ -179,38 +164,26 @@ export function createApp(options: AppOptions) {
     });
 
     app.get('/mock/affirm/checkout', (req, res) => {
-      const attemptId = typeof req.query.attemptId === 'string' ? req.query.attemptId : '';
-      const result = AttemptIdParam.test(attemptId) ? attempts.get(attemptId) : null;
-      if (!result || result.status !== 200 || (result.body as Attempt).method !== 'affirm') {
-        res.status(404).type('text/plain').send('Checkout not found');
-        return;
-      }
-      res.type('html').send(renderAffirmPage(result.body as Attempt));
+      const attempt = attempts.findAffirmAttempt(typeof req.query.attemptId === 'string' ? req.query.attemptId : '');
+      if (!attempt) return notFoundPage(res);
+      res.type('html').send(renderAffirmPage(attempt));
     });
 
-    app.post('/mock/affirm/checkout/:attemptId/:action', async (req, res) => {
-      const { attemptId, action } = req.params;
-      const current = AttemptIdParam.test(attemptId) ? attempts.get(attemptId) : null;
-      if (!current || current.status !== 200 || (current.body as Attempt).method !== 'affirm') {
-        res.status(404).type('text/plain').send('Checkout not found');
-        return;
-      }
-      if (action === 'approve') {
-        // Same path as authorize, with a fixed key per attempt.
-        const result = await attempts.authorizeSafe(attemptId, `affirm:${attemptId}`, 'affirm');
-        if (result.dropResponse) {
-          req.socket.destroy();
-          return;
-        }
-        res.redirect(302, returnUrl(attemptId, 'approved'));
-        return;
-      }
-      if (action === 'cancel') {
-        attempts.cancel(attemptId);
-        res.redirect(302, returnUrl(attemptId, 'cancelled'));
-        return;
-      }
-      res.status(404).type('text/plain').send('Not found');
+    // The redirect target is built on the server, never taken from the request (no open redirect).
+    app.post('/mock/affirm/checkout/:attemptId/approve', async (req, res) => {
+      const { attemptId } = req.params;
+      if (!attempts.findAffirmAttempt(attemptId)) return notFoundPage(res);
+      // Same path as a wallet authorize, with one fixed key per attempt.
+      const result = await attempts.authorizeSafe(attemptId, `affirm:${attemptId}`, 'affirm');
+      if (result.dropResponse) return dropConnection(req);
+      res.redirect(302, returnUrl(attemptId, 'approved'));
+    });
+
+    app.post('/mock/affirm/checkout/:attemptId/cancel', (req, res) => {
+      const { attemptId } = req.params;
+      if (!attempts.findAffirmAttempt(attemptId)) return notFoundPage(res);
+      attempts.cancel(attemptId);
+      res.redirect(302, returnUrl(attemptId, 'cancelled'));
     });
   }
 
@@ -222,7 +195,7 @@ export function createApp(options: AppOptions) {
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err && typeof err === 'object' && 'type' in err && err.type === 'entity.parse.failed') {
-      return send(res, fail(422, 'VALIDATION_ERROR', 'Malformed JSON body'));
+      return send(res, errors.validation('Malformed JSON body'));
     }
     send(res, fail(500, 'INTERNAL', 'Internal error'));
   });

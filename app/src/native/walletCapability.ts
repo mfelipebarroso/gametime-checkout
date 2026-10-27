@@ -1,4 +1,4 @@
-// JS wrapper over the native WalletCapability module (SPEC §2). A failure, a throw or a 3 s timeout
+// JS wrapper over the native WalletCapability module. A failure, a throw or a 3 s timeout
 // all mean `false`: that only hides the wallet button, it never blocks checkout.
 
 export type Capabilities = { applePayAvailable: boolean; googlePayReady: boolean };
@@ -8,36 +8,27 @@ export interface WalletCapabilitySource {
   isGooglePayReady(): Promise<boolean>;
 }
 
-export const CAPABILITY_TIMEOUT_MS = 3000;
+const CAPABILITY_TIMEOUT_MS = 3000;
 
 /** Stand-in when the native module is absent (tests, or a build without it): no wallet. */
-export const unavailableWalletSource: WalletCapabilitySource = {
+const unavailableWalletSource: WalletCapabilitySource = {
   isApplePayAvailable: async () => false,
   isGooglePayReady: async () => false,
 };
 
+/** Runs a capability check. Anything other than a timely `true` counts as `false`. */
 export function safeCheck(check: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
-  return new Promise(resolve => {
-    const timer = setTimeout(() => resolve(false), timeoutMs);
-    let result: Promise<boolean>;
-    try {
-      result = check();
-    } catch {
-      clearTimeout(timer);
-      resolve(false);
-      return;
-    }
-    result.then(
-      value => {
-        clearTimeout(timer);
-        resolve(value === true);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(false);
-      },
-    );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<boolean>(resolve => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
   });
+  const result = Promise.resolve()
+    .then(check)
+    .then(
+      value => value === true,
+      () => false,
+    );
+  return Promise.race([result, timeout]).finally(() => clearTimeout(timer));
 }
 
 export function createWalletCapability(source: WalletCapabilitySource | null | undefined, timeoutMs = CAPABILITY_TIMEOUT_MS) {

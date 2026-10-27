@@ -1,7 +1,7 @@
-// Environment simulator settings (brief: "a dev menu… that forces iOS, Android, no provisioned cards").
-// Pure, so the effective eligibility input can be tested. Real detection stays the default.
+// Environment simulator settings. Pure, so the effective eligibility input can be tested. Real detection
+// stays the default.
 
-import type { Platform } from '../domain/eligibility';
+import type { EligibilityInput, Platform } from '../domain/eligibility';
 import type { Capabilities } from '../native/walletCapability';
 
 export type PlatformOverride = 'device' | 'ios' | 'android';
@@ -16,7 +16,7 @@ export type DevOverrides = {
 
 export const DEFAULT_OVERRIDES: DevOverrides = { platform: 'device', applePay: 'real', googlePay: 'real' };
 
-export type Environment = { platform: Platform; applePayAvailable: boolean; googlePayReady: boolean };
+export type Environment = Omit<EligibilityInput, 'total'>;
 
 export function effectiveEnvironment(devicePlatform: Platform, real: Capabilities, overrides: DevOverrides): Environment {
   return {

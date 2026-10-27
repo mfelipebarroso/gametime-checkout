@@ -1,5 +1,5 @@
 import { attachLifecycle, type AppStateLike, type LinkingLike } from '../src/checkout/lifecycle';
-import { parseReturnUrl } from '../src/checkout/orchestrator';
+import { parseReturnUrl } from '../src/checkout/returnUrl';
 import { flush, makeHarness, MemoryStorage, networkError, timeout, FakeServer, type Harness } from './support/checkoutHarness';
 
 const CARD = { cardToken: 'tok_test_visa_4242' };
@@ -279,7 +279,7 @@ describe('cold start', () => {
   test('awaiting_user in phase authorizing without the token → cancel → ready', async () => {
     const first = await booted();
     first.api.authorize.mockImplementation(() => new Promise(() => undefined)); // killed mid-request
-    void first.orchestrator.startPayment('card', CARD);
+    first.orchestrator.startPayment('card', CARD);
     await flush();
     expect(first.snapshot()).toMatchObject({ phase: 'authorizing', attemptId: 'pat_1' });
 
@@ -297,7 +297,7 @@ describe('cold start', () => {
       first.server.authorize(id, key, token);
       return new Promise(() => undefined);
     });
-    void first.orchestrator.startPayment('card', CARD);
+    first.orchestrator.startPayment('card', CARD);
     await flush();
 
     const h = relaunch(first);
@@ -308,7 +308,7 @@ describe('cold start', () => {
 
   test('kill with the wallet sheet open → "not completed" on relaunch (M11)', async () => {
     const first = await booted();
-    void first.orchestrator.startPayment('apple_pay');
+    first.orchestrator.startPayment('apple_pay');
     await flush();
     expect(first.applePay.isOpen).toBe(true);
 
@@ -409,7 +409,7 @@ describe('Affirm and deep links', () => {
 
   test('quantity is locked during an active attempt', async () => {
     const h = await booted();
-    void h.orchestrator.startPayment('apple_pay');
+    h.orchestrator.startPayment('apple_pay');
     await flush();
     await h.orchestrator.changeQuantity(1);
     expect(h.api.updateQuantity).not.toHaveBeenCalled();

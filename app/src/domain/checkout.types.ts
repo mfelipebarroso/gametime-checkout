@@ -49,21 +49,23 @@ export function isWalletMethod(method: PaymentMethod): method is WalletMethod {
   return method === 'apple_pay' || method === 'google_pay';
 }
 
-/** An attempt is in progress: locks the quantity selector and the pay buttons. */
+/** An attempt is in progress: a server result can still arrive, and the pay buttons stay locked. */
+export const IN_FLIGHT_TAGS: readonly CheckoutTag[] = [
+  'creating',
+  'awaiting_wallet',
+  'awaiting_affirm',
+  'authorizing',
+  'reconciling',
+  'retryable_error',
+];
+
 export function hasActiveAttempt(state: CheckoutState): boolean {
-  return (
-    state.tag === 'creating' ||
-    state.tag === 'awaiting_wallet' ||
-    state.tag === 'awaiting_affirm' ||
-    state.tag === 'authorizing' ||
-    state.tag === 'reconciling' ||
-    state.tag === 'retryable_error'
-  );
+  return IN_FLIGHT_TAGS.includes(state.tag);
 }
 
 /**
  * Quantity can change in `ready`, and while an Affirm attempt waits for the user (`affirm_pending`):
- * that attempt was never authorized, and the server cancels it when the order version changes (M14).
+ * that attempt was never authorized, and the server cancels it when the order version changes.
  */
 export function canChangeQuantity(state: CheckoutState): boolean {
   return state.tag === 'ready' || (state.tag === 'reconciling' && state.reason === 'affirm_pending');

@@ -74,7 +74,7 @@ describe('luhn and brand', () => {
     expect(detectBrand(prefix.padEnd(16, '0'))).toBe(brand);
   });
 
-  test('unknown brand → BRAND_UNSUPPORTED (D-08)', () => {
+  test('unknown brand → BRAND_UNSUPPORTED', () => {
     expect(validateNumber(withLuhn('3530', 16))).toMatchObject({ valid: false, error: 'BRAND_UNSUPPORTED' });
     expect(validateNumber('1')).toMatchObject({ error: 'BRAND_UNSUPPORTED' });
   });

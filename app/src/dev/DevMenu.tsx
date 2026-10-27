@@ -1,10 +1,11 @@
-// Hidden environment simulator (brief: "a dev menu, hidden settings screen… that forces iOS, Android,
-// no provisioned cards"). Opened by long-pressing the "Checkout" title, only under __DEV__. Real
+// Hidden environment simulator: forces the platform and wallet availability so every eligibility case can
+// be reviewed on one device. Opened by long-pressing the "Checkout" title, dev builds only. Real
 // detection stays the default ("Device" / "Real").
 
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import type { MockApi } from '../api/paymentApi';
+import { API_BASE_URL, TIMEOUTS_MS } from '../api/config';
+import { createMockApi } from '../api/paymentApi';
 import type { CheckoutOrchestrator } from '../checkout/orchestrator';
 import type { Platform } from '../domain/eligibility';
 import type { Capabilities } from '../native/walletCapability';
@@ -14,6 +15,8 @@ import type { DevOverrides } from './overrides';
 /** Long enough to kill the app while an authorize is in flight. */
 const SLOW_SERVER_MS = 8000;
 
+const mockApi = createMockApi(API_BASE_URL, TIMEOUTS_MS.default);
+
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -21,12 +24,11 @@ type Props = {
   onChangeOverrides: (next: DevOverrides) => void;
   devicePlatform: Platform;
   realCapabilities: Capabilities | null;
-  mockApi: MockApi;
   orchestrator: CheckoutOrchestrator;
 };
 
 export function DevMenu(props: Props) {
-  const { visible, onClose, overrides, onChangeOverrides, mockApi, orchestrator } = props;
+  const { visible, onClose, overrides, onChangeOverrides, orchestrator } = props;
   const [slowServer, setSlowServer] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +43,7 @@ export function DevMenu(props: Props) {
         setError(null);
       })
       .catch(() => setError('Mock server unreachable'));
-  }, [visible, mockApi]);
+  }, [visible]);
 
   const run = (task: () => Promise<unknown>) => {
     task()
@@ -169,10 +171,10 @@ const styles = StyleSheet.create({
   segment: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
   segmentSelected: { backgroundColor: colors.text, borderColor: colors.text },
   segmentText: { color: colors.text },
-  segmentTextSelected: { color: '#fff' },
+  segmentTextSelected: { color: colors.onDark },
   readonly: { color: colors.muted, fontSize: 13 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   switchText: { flex: 1, gap: 2 },
-  reset: { backgroundColor: '#fdecea', borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
+  reset: { backgroundColor: colors.dangerBg, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
   resetText: { color: colors.danger, fontWeight: '700' },
 });

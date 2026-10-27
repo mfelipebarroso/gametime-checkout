@@ -9,12 +9,12 @@ export type EligibilityInput = {
   total: Money;
 };
 
-/** Affirm only when the total is strictly greater than $100.00 (invariant 7). */
+/** Affirm only when the total is strictly greater than $100.00 */
 export function isAffirmEligible(total: Money): boolean {
   return total.currency === 'USD' && total.minorUnits > AFFIRM_MIN_EXCLUSIVE_MINOR;
 }
 
-/** Display order: platform wallet, Affirm, card. Card always appears (invariant 8). */
+/** Display order: platform wallet, Affirm, card. Card always appears. */
 export function eligibleMethods(input: EligibilityInput): PaymentMethod[] {
   const methods: PaymentMethod[] = [];
   if (input.platform === 'ios' && input.applePayAvailable) {

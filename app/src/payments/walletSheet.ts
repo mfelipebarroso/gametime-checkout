@@ -1,15 +1,15 @@
-// Simulated Apple Pay / Google Pay sheets (D-11). The adapter asks the controller to show a sheet and
-// waits; the UI renders the pending request as a modal and resolves it with a token or a cancel.
+// Simulated Apple Pay / Google Pay sheets. The adapter asks the controller for a sheet and waits; the UI
+// renders the pending request as a modal and resolves it with a token or a cancel.
 
-import type { Money } from '@shared';
+import { TEST_TOKENS, type Money } from '@shared';
 import type { WalletMethod } from '../domain/checkout.types';
 import type { PaymentAdapter, PresentResult } from './types';
 
 export type SheetRequest = { method: WalletMethod; amount: Money };
 
 const TOKENS: Record<WalletMethod, string> = {
-  apple_pay: 'tok_test_applepay',
-  google_pay: 'tok_test_googlepay',
+  apple_pay: TEST_TOKENS.applePay,
+  google_pay: TEST_TOKENS.googlePay,
 };
 
 export class WalletSheetController {
@@ -54,7 +54,7 @@ export class WalletSheetController {
   }
 
   private emit(): void {
-    this.listeners.forEach(l => l());
+    this.listeners.forEach(listener => listener());
   }
 }
 

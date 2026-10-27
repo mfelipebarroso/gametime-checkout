@@ -1,4 +1,4 @@
-// Invariant 4: the card number, CVC, expiry and payment tokens never reach storage or logs.
+// The card number, CVC, expiry and payment tokens never reach storage or logs.
 
 import { createAttemptStore, SNAPSHOT_KEY } from '../src/checkout/attemptStore';
 import { validateCard } from '../src/domain/card';
@@ -57,7 +57,7 @@ describe('card flow leaves no sensitive data behind', () => {
     const h = makeHarness();
     await h.orchestrator.init();
     h.api.authorize.mockImplementation(() => new Promise(() => undefined));
-    void h.orchestrator.startPayment('card', { cardToken: tokenizeCard(FORM) });
+    h.orchestrator.startPayment('card', { cardToken: tokenizeCard(FORM) });
     await new Promise<void>(resolve => setImmediate(() => resolve()));
 
     const snapshot = h.snapshot()!;

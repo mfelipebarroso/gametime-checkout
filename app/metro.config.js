@@ -7,7 +7,7 @@ const sharedDir = path.resolve(__dirname, '../shared');
  * Metro configuration
  * https://reactnative.dev/docs/metro
  *
- * `shared/` lives outside app/; watchFolders lets Metro resolve and watch those files (D-12).
+ * `shared/` lives outside app/; watchFolders lets Metro resolve and watch those files.
  *
  * @type {import('@react-native/metro-config').MetroConfig}
  */
