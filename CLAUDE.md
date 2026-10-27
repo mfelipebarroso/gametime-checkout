@@ -1,6 +1,11 @@
 # CLAUDE.md — Gametime Checkout (take-home)
 
 This file is read in every session. It holds the project's permanent rules.
+
+**Source of truth:** the original brief ("Staff Mobile Take-Home 01 — Checkout & Payments") is the
+only binding set of requirements. Everything below and in `docs/` is our implementation plan: if it
+conflicts with the brief, the brief wins; if it goes beyond the brief, it can be trimmed (ask first).
+
 Details live in:
 
 - `docs/PLAN.md`: execution order, phases, gates and the manual test script.
@@ -91,4 +96,5 @@ cd app && npm run ios             # or: npm run android
 - Visual validation (tapping buttons, looking at the screen) depends on the user. Automate what you can
   with `xcrun simctl` and `adb` (launch, terminate, openurl, force-stop) and ask for visual confirmation
   of the rest.
-- If a rule in this file conflicts with a ticket in the original documents, this file wins.
+- Precedence: the brief > this file > `docs/DECISIONS.md` > `docs/SPEC.md`/`docs/PLAN.md` > the
+  original architecture/ticket documents.

@@ -18,6 +18,7 @@ add a line under "Deviations" at the end of the file.
 | D-11 | Apple Pay and Google Pay sheets are JS modals | No merchant ID or PSP; the behavior (express, cancel) is what is being evaluated |
 | D-12 | Shared types via Metro `watchFolders`; fall back to a copy script | Avoids duplicating the contract |
 | D-13 | **Native code is frozen** after phase 4: no further changes to Swift/ObjC++/Kotlin, Gradle, Podfile, `Info.plist`, `AndroidManifest.xml` or the Xcode project | User's decision (2026-10-26). `isGooglePayReady = false` on the emulator is expected (no card in Google Wallet); the dev menu covers simulation |
+| D-14 | **The original brief is the only binding requirement**; SPEC/PLAN/DECISIONS are the implementation plan and can be trimmed where they go beyond it | User's decision (2026-10-26). The native `WalletCapability` module stays because the brief asks that "real detection logic should still exist and be the default" and that Apple Pay require a card provisioned in Wallet, which only PassKit/Play Services can tell |
 
 ## Conflicts between the original documents and how they were resolved
 
