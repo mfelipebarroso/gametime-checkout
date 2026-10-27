@@ -1,7 +1,7 @@
 # SPEC — Gametime Checkout
 
-Technical source of truth for the implementation. The tickets cited (ELIG-01 etc.) come from the
-original backlog.
+The technical spec: contract, domain model, state machine and card rules. Where the code and this file
+disagree, `docs/DECISIONS.md` explains why.
 
 ---
 
@@ -38,7 +38,7 @@ as a float to do math, only to display.
 
 ---
 
-## 2. Eligibility (ELIG-01, NAT-01, NAT-02, ORDER-01)
+## 2. Eligibility
 
 ```ts
 type PaymentMethod = 'apple_pay' | 'google_pay' | 'affirm' | 'card';
@@ -67,7 +67,7 @@ Rules:
 eligible, the selection goes back to none (or to `card` if the form is open). While an attempt is
 active, the quantity selector is disabled.
 
-### Test matrix (TEST-01)
+### Test matrix
 
 | platform | applePay | googlePay | total  | expected                          |
 |----------|----------|-----------|--------|-----------------------------------|
@@ -106,7 +106,7 @@ active, the quantity selector is disabled.
 
 ---
 
-## 3. Card (CARD-01, CARD-02)
+## 3. Card
 
 ### Supported brands
 
@@ -117,7 +117,7 @@ active, the quantity selector is disabled.
 | amex       | 34, 37                            | 15           | 4   | 4-6-5               |
 | discover   | 6011, 644–649, 65                 | 16–19        | 3   | 4-4-4-4(-3)         |
 
-An unknown brand is invalid, with the message "We don't support this card type" (decision D-08).
+An unknown brand is invalid, with the message "We don't support this card type".
 
 ### Pure functions (`app/src/domain/card.ts`)
 
@@ -486,29 +486,25 @@ interface PaymentAdapter {
 
 ---
 
-## 8. Developer menu (DEV-01)
+## 8. Environment simulator
 
-Reachable through a "Dev" button in the corner of the screen, rendered only under `__DEV__`. Its state
-lives in memory (React context); it is not persisted.
+Hidden: long-press the "Checkout" title. Rendered only under `__DEV__`. Its state lives in memory and
+is not persisted.
 
 | Control | Options | Effect |
 |---|---|---|
 | Platform | Device · iOS · Android | `platform` in eligibility |
-| Apple Pay | Real · Available · Unavailable | capability override |
-| Google Pay | Real · Ready · Not ready | capability override |
-| Next outcome | Approve · Decline · Processing · Drop response | `POST /v1/mock/scenario` |
-| Latency | 0 · 2 s · 8 s | same |
-| Order total | Quantity · $99.99 · $100.00 · $100.01 · $150.00 | `PUT /v1/mock/orders/:id` |
-| Reset demo | — | `POST /v1/mock/reset` + clear snapshot |
+| Apple Pay | Real · Card provisioned · No cards | capability override |
+| Google Pay | Real · Set up · Not set up | capability override |
+| Slow server (8 s) | on · off | `POST /v1/mock/scenario` with `latencyMs: 8000`, to kill the app mid-authorize |
+| Reset demo | — | `POST /v1/mock/reset` + clear the snapshot |
 
-The menu also shows, read-only:
+The menu also shows the **real** capability values, read-only. The default is "Real" for
+capabilities. With "Platform: iOS" on an Android device the simulated Apple Pay sheet appears, which is
+fine because it is pure JS.
 
-- the **real** capability values;
-- the current snapshot, without sensitive fields, since they never exist in it;
-- the reducer state.
-
-The default is "Real" for capabilities. With "Platform: iOS" on an Android device, the simulated
-Apple Pay sheet appears, which is acceptable because it is pure JS.
+The other mock controls (next outcome, exact order totals) are server routes only, used by the server
+tests and by `curl`.
 
 ---
 

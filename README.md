@@ -73,7 +73,7 @@ cd app && npx tsc --noEmit
 ```
 
 > If Android ever shows the wallet module as missing after changing `codegenConfig`, delete
-> `app/android/app/.cxx` once and rebuild (stale CMake cache, see `docs/DECISIONS.md`, phase 4).
+> `app/android/app/.cxx` once and rebuild (stale CMake cache, see `docs/DECISIONS.md`).
 
 Test cards (fake): `4242 4242 4242 4242` (approves), `4000 0000 0000 0002` (always declined),
 `5555 5555 5555 4444`, `3782 822463 10005` (Amex, 4-digit CVC), `6011 1111 1111 1117`. Any future
@@ -371,8 +371,8 @@ app/                 React Native app
   ios/ android/      native projects (WalletCapability module, URL scheme)
 server/              mock payment API (Express + better-sqlite3)
 shared/              contract types shared by app and server
-docs/                spec, plan, decisions log, chaos results
+docs/                spec, design decisions, chaos results
 ```
 
-`docs/SPEC.md` and `docs/PLAN.md` are the working spec and plan; where the implementation deviates,
-`docs/DECISIONS.md` records what changed and why.
+`docs/SPEC.md` is the working spec; `docs/DECISIONS.md` records the design decisions and where the
+implementation moved away from the spec.

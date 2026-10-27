@@ -1,4 +1,4 @@
-# Chaos and interruption results (phase 6)
+# Chaos and interruption results
 
 Run on 2026-10-26 on the Android emulator (`Pixel_RN`, API 36, `google_apis`, debug build with Metro),
 driven by `adb` (taps located through `uiautomator`, `am force-stop`, relaunch) against the local mock
