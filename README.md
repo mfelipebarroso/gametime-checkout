@@ -40,8 +40,9 @@ survives backgrounding, OS interruptions and kill/relaunch mid-payment without c
 | JDK | 17 |
 
 The app builds and runs on both. Payment flows and the interruption scenarios (§6) were driven on
-the Android emulator with `adb`; on iOS the checkout and eligibility were checked on the simulator,
-and the interruption paths are covered by the automated orchestrator tests.
+the Android emulator with `adb`. On the iOS simulator I checked the checkout, eligibility and a full card
+payment (keyboard, validation, Pay → confirmed, one authorize on the server). The iOS interruption
+paths are covered by the automated orchestrator tests, not by manual runs.
 
 ---
 
