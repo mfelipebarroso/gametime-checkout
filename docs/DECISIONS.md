@@ -59,3 +59,19 @@ add a line under "Deviations" at the end of the file.
   (the `CHECK` is unchanged).
 - **`WalletCapability` fake:** used only in tests/`__DEV__`; without the native module outside of
   that, the result is `false`.
+
+### 2026-10-26 — Phase 1
+
+- **`CVC_INVALID`** ("Your card's security code is invalid.") added to the SPEC §3 codes: covers a CVC
+  longer than the brand requires, or with non-digits.
+- **Ambiguous number prefix** (e.g. "2", "6", "27") yields `NUMBER_INCOMPLETE`, not
+  `BRAND_UNSUPPORTED`, while it can still become a supported brand.
+- **Number `complete`** is only `true` at the typical length (16; Amex 15). A 13-digit Visa is `valid`
+  but does not advance focus.
+- **`formatExpiry(input, previous?)`**: the optional second argument keeps backspace from getting
+  stuck on the slash.
+- **UI state:** `ready` gains `notice?` (`quote_changed` | `payment_not_completed`);
+  `reconciling.reason` includes `affirm_pending` and `exhausted` for the "Continue with Affirm" and
+  "Check again" buttons. The `method` for `RETRY` and for `AUTHORIZE_STARTED` (retry) comes in the
+  action.
+- **The reducer** is pure: `createCheckoutReducer(onInvalid)`; the caller logs `invalid_transition`.
