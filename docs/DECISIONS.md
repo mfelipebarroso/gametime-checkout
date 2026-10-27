@@ -17,6 +17,7 @@ add a line under "Deviations" at the end of the file.
 | D-10 | Affirm simulated as a server HTML page, opened in the system browser, returning via `gametime-demo://` | Genuinely exercises background, cold start and deep links |
 | D-11 | Apple Pay and Google Pay sheets are JS modals | No merchant ID or PSP; the behavior (express, cancel) is what is being evaluated |
 | D-12 | Shared types via Metro `watchFolders`; fall back to a copy script | Avoids duplicating the contract |
+| D-13 | **Native code is frozen** after phase 4: no further changes to Swift/ObjC++/Kotlin, Gradle, Podfile, `Info.plist`, `AndroidManifest.xml` or the Xcode project | User's decision (2026-10-26). `isGooglePayReady = false` on the emulator is expected (no card in Google Wallet); the dev menu covers simulation |
 
 ## Conflicts between the original documents and how they were resolved
 

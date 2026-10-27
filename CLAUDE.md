@@ -84,6 +84,8 @@ cd app && npm run ios             # or: npm run android
 - **Ask for confirmation before:** installing anything global (brew, gem, sdkmanager), changing the
   Node/Xcode/JDK version, deleting files outside the repo, or changing any decision in
   `docs/DECISIONS.md`.
+- **Native code is frozen (D-13).** Do not change Swift/ObjC++/Kotlin, Gradle, Podfile, `Info.plist`,
+  `AndroidManifest.xml` or the Xcode project. Everything from phase 5 on is JS/TS (or server).
 - If a native build fails twice for the same reason, stop and report the error with a diagnosis instead
   of blindly trying variations.
 - Visual validation (tapping buttons, looking at the screen) depends on the user. Automate what you can
