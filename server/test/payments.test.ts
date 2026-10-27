@@ -124,6 +124,13 @@ describe('create validation', () => {
     await authorize(h, attempt.attemptId, '4242424242424242').expect(422);
   });
 
+  test('API responses are not cacheable (no ETag, Cache-Control: no-store)', async () => {
+    const attempt = await createAttempt(h);
+    const res = await h.api().get(`/v1/payment-attempts/${attempt.attemptId}`).expect(200);
+    expect(res.headers.etag).toBeUndefined();
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
   test('authorize without header → 400; unknown attempt → 404', async () => {
     const attempt = await createAttempt(h);
     await h.api().post(`/v1/payment-attempts/${attempt.attemptId}/authorize`).send({ sourceToken: 'tok_test_visa_4242' }).expect(400);

@@ -75,6 +75,12 @@ export function createApp(options: AppOptions) {
 
   const app = express();
   app.disable('x-powered-by');
+  // Payment state must never come from an HTTP cache: no ETags (no 304s), no caching of API responses.
+  app.set('etag', false);
+  app.use('/v1', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(requestLogger(options.logSink ?? stdoutSink));
   app.use(express.json({ limit: '16kb' }));
 

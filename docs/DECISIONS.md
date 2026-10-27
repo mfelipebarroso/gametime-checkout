@@ -154,3 +154,11 @@ add a line under "Deviations" at the end of the file.
 - **Card form:** Pay stays disabled until the card is valid (brief: "must not allow submission"), so
   errors show on blur only; the "show all errors on submit" path from SPEC §3 only runs as a guard
   inside `onPress`.
+
+### 2026-10-26 — Phase 6
+
+- Chaos scenarios M9–M14 run on Android via `adb`; results in `docs/chaos-results.md`.
+- **No HTTP caching for payment state:** ETags disabled and `Cache-Control: no-store` on `/v1`, after
+  seeing `304`s on polling GETs.
+- **M9 on Android** exercises server-side idempotent replay rather than the client's reconcile path:
+  OkHttp transparently retries a POST whose connection dropped, with the same `Idempotency-Key`.
