@@ -303,10 +303,10 @@ at most one authorization per paid order in every scenario.
   approved but server says declined; corrupted snapshot; quote changes); HTTP client error
   normalization and timeouts; capability wrapper timeouts; a security test asserting that storage
   and logs never contain the card number, CVC, expiry or tokens.
-- **Server (Vitest + Supertest, 42):** happy path, decline as 200, idempotent replay and key reuse,
+- **Server (Vitest + Supertest, 41):** happy path, decline as 200, idempotent replay and key reuse,
   10 parallel authorizes (same key and different keys) → 1 authorization, dropped response + replay,
   `processing` with an injectable clock, `QUOTE_STALE` on create and authorize, Affirm threshold
-  (10000 → 422, 10001 → 201), restart from the SQLite file, mock routes 404 without `MOCK_MODE`, no
+  enforced server-side ($51.75 → 422, $103.50 → 201), restart from the SQLite file, mock routes 404 without `MOCK_MODE`, no
   tokens in logs.
 - **Manual / chaos:** see `docs/chaos-results.md`.
 
