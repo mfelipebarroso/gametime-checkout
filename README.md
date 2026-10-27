@@ -365,6 +365,52 @@ Edge cases I know about and did not handle in this POC:
 
 ---
 
+## 11. How I used AI
+
+I built this with **Claude Code** (Anthropic, Claude Opus) running in VS Code as a pair: I set the
+direction, the constraints and the acceptance bar; it wrote most of the code, tests and first drafts
+of the docs; I reviewed, tested on devices and pushed back.
+
+### Where and why
+
+| Area | What the AI did | Why |
+|---|---|---|
+| Planning | Turned the brief into a spec (contract, state machine, card rules) and a phased plan with test gates | Get the risky parts (idempotency, reconciliation) designed before writing UI |
+| App and server | Wrote the orchestrator, reducer, card validation, mock server, SQLite schema and the native `WalletCapability` module | Speed on a 3-hour budget; the design decisions stayed mine |
+| Tests | Wrote the eligibility matrix, card edge cases, orchestrator interruption scenarios and server concurrency tests | Exhaustive matrices are tedious by hand and easy to get wrong |
+| Device runs | Drove the Android emulator through `adb` for the kill/relaunch scenarios and read the server log and DB after each one | Repeatable chaos runs with evidence, not "it looked fine" |
+| Docs and cleanup | Drafted this README; ran a DRY/organization pass and removed dead code at my request | Consistency across a codebase written quickly |
+
+### How I validated and challenged it
+
+- **The brief was the only acceptance bar.** I had the AI check the implementation against the PDF
+  line by line, then fix the gaps it found (keyboard covering the Pay button, wallet availability
+  not re-checked after returning to the app, missing known-gaps section).
+- **Payment rules were fixed up front and never relaxed to make a test pass:** uncertainty never
+  becomes a new charge, the server is the authority, the snapshot is persisted before any request,
+  nothing sensitive is stored or logged, one authorization per attempt and one success per order.
+- **Evidence over claims.** Every interruption scenario was checked against the server's
+  `authorizations` table (at most one per order, see `docs/chaos-results.md`). When I reported an
+  iOS run as working, the AI declined to record it until the server log showed the requests; I then
+  re-ran it and we recorded only what the log proved.
+- **Things I pushed back on:**
+  - It initially wrote comments, docs and commits in Portuguese (the language I was chatting in);
+    I required English across the repo and had the history rewritten.
+  - It added a native module, and I questioned it. It stayed because the brief requires real
+    detection ("a card provisioned in Wallet" can only be answered by PassKit / Play Services), but I
+    froze native code after that phase.
+  - It added a visible "DEV" button with extra controls. I cut it down to a hidden simulator with
+    only what the brief asks for; latency and reset became `curl`-only server routes.
+  - I asked for a DRY pass and removal of anything the brief didn't need: shared helpers moved to
+    `shared/`, unused mock routes and dead exports were deleted.
+- **Bugs found by testing, not by the AI's first pass:** polling GETs answered with `304` (fixed
+  with `Cache-Control: no-store` and no ETags); Android's OkHttp silently retrying a dropped POST
+  (harmless thanks to the idempotency key, documented); a stale CMake cache hiding the native module.
+- **Automated checks on every change:** type check, lint, 192 app tests and 41 server tests, plus a
+  sweep confirming no card number, CVC or token reaches storage or logs.
+
+---
+
 ## Repository layout
 
 ```
