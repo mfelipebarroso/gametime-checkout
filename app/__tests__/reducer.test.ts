@@ -1,6 +1,6 @@
 import { createCheckoutReducer, initialCheckoutState, transition } from '../src/domain/checkout.reducer';
 import type { CheckoutAction, CheckoutState } from '../src/domain/checkout.types';
-import { hasActiveAttempt } from '../src/domain/checkout.types';
+import { canChangeQuantity, hasActiveAttempt } from '../src/domain/checkout.types';
 
 const A = 'pat_1';
 
@@ -200,5 +200,14 @@ describe('hasActiveAttempt', () => {
   test.each(ALL_STATES.map(s => [s.tag, s] as const))('%s', (tag, state) => {
     const active = ['creating', 'awaiting_wallet', 'awaiting_affirm', 'authorizing', 'reconciling', 'retryable_error'];
     expect(hasActiveAttempt(state)).toBe(active.includes(tag));
+  });
+});
+
+describe('canChangeQuantity', () => {
+  test('only in ready and in affirm_pending', () => {
+    for (const state of ALL_STATES) {
+      expect(canChangeQuantity(state)).toBe(state.tag === 'ready');
+    }
+    expect(canChangeQuantity({ tag: 'reconciling', attemptId: A, reason: 'affirm_pending' })).toBe(true);
   });
 });

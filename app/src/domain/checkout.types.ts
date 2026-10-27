@@ -12,7 +12,8 @@ export type ReconcileReason =
   | 'cold_start'
   | 'deeplink'
   | 'affirm_pending' // Affirm still `awaiting_user`: "Continue with Affirm" / "Choose another method"
-  | 'exhausted'; // backoff exhausted: "Check again"
+  | 'exhausted' // backoff exhausted: "Check again"
+  | 'manual'; // user tapped "Check again"
 
 export type RetryReason = 'network' | 'timeout' | 'server';
 
@@ -58,4 +59,12 @@ export function hasActiveAttempt(state: CheckoutState): boolean {
     state.tag === 'reconciling' ||
     state.tag === 'retryable_error'
   );
+}
+
+/**
+ * Quantity can change in `ready`, and while an Affirm attempt waits for the user (`affirm_pending`):
+ * that attempt was never authorized, and the server cancels it when the order version changes (M14).
+ */
+export function canChangeQuantity(state: CheckoutState): boolean {
+  return state.tag === 'ready' || (state.tag === 'reconciling' && state.reason === 'affirm_pending');
 }

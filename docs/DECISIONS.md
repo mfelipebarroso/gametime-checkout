@@ -95,3 +95,27 @@ add a line under "Deviations" at the end of the file.
 - **Mock extras:** `GET /v1/mock/scenario`, so the dev menu can read the current scenario. When the
   attempt is no longer `awaiting_user`, the Affirm page shows a "Return to Gametime" link.
 - **`sourceToken`** must match `^tok_test_[a-z0-9_]+$`; otherwise `422` (without echoing the value).
+
+### 2026-10-26 — Phase 3
+
+- **State ownership:** the orchestrator owns the reducer state and exposes it as an external store
+  (`subscribe`/`getView`, for `useSyncExternalStore`) instead of a component-level `useReducer`.
+  The double-tap guard and `START_PAYMENT` then run synchronously against the current state; a
+  `useReducer` value read through a ref would lag a render behind.
+- **Order loading** is a tagged union (`loading | loaded | error`), not loose booleans.
+- **Quantity during an attempt:** locked, except in `reconciling/affirm_pending`. That attempt was
+  never authorized and the server cancels it when the version changes, which is what M14 requires.
+- **Server `cancelled`** (not `QUOTE_STALE`) maps to the `cancelled` UI state, per the §4.2 mapping
+  (§6.4 says "back to ready"; `cancelled` is a short message that is dismissed back to `ready`).
+  `cancelled` with `QUOTE_STALE` reloads the order and returns to `ready` with the total-changed notice.
+- **Reconcile re-authorizes at most once per run** (same key, token still in memory). If the attempt
+  is still `awaiting_user` after that, it is cancelled (atomic, only from `awaiting_user`) and the
+  user sees "Your payment wasn't completed." This avoids an authorize ↔ reconcile loop.
+- **`409 ATTEMPT_IN_PROGRESS` on create:** the client follows the existing attempt by polling; it
+  never authorizes it (it has no key or token for it).
+- **`abandon()`** from `retryable_error`: clears the snapshot (and cancels the attempt if its id is
+  known). Safe because an `awaiting_user` attempt is never authorized without a token.
+- **Extra log events:** `payment_create_rejected`, `deeplink_received`, `storage_error`,
+  `order_load_failed`. The reconcile reason is logged in `code` (allowlisted).
+- **AsyncStorage v3** keeps `getItem/setItem/removeItem`; the store depends on that minimal interface,
+  so tests use an in-memory fake. `react-native-get-random-values` is imported first in `index.js`.
