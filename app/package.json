@@ -42,5 +42,18 @@
   },
   "engines": {
     "node": ">= 22.11.0"
+  },
+  "codegenConfig": {
+    "name": "GametimeCheckoutSpecs",
+    "type": "modules",
+    "jsSrcsDir": "src/native",
+    "android": {
+      "javaPackageName": "com.gametimecheckout.wallet"
+    },
+    "ios": {
+      "modulesProvider": {
+        "WalletCapability": "RCTWalletCapability"
+      }
+    }
   }
 }

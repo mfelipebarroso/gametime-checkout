@@ -119,3 +119,24 @@ add a line under "Deviations" at the end of the file.
   `order_load_failed`. The reconcile reason is logged in `code` (allowlisted).
 - **AsyncStorage v3** keeps `getItem/setItem/removeItem`; the store depends on that minimal interface,
   so tests use an in-memory fake. `react-native-get-random-values` is imported first in `index.js`.
+
+### 2026-10-26 — Phase 4
+
+- **Turbo Module with codegen** worked on both platforms (no interop fallback needed).
+  `codegenConfig` in `app/package.json` (`GametimeCheckoutSpecs`, iOS `modulesProvider`
+  `WalletCapability → RCTWalletCapability`, Android package `com.gametimecheckout.wallet`).
+- **iOS:** Swift (`WalletCapabilityImpl`, PassKit `canMakePayments(usingNetworks:capabilities:)`) +
+  Objective-C++ glue (`RCTWalletCapability.mm`). The glue imports
+  `React_RCTAppDelegate/RCTDefaultReactNativeFactoryDelegate.h` before `GametimeCheckout-Swift.h`,
+  because the generated Swift header also declares `SceneDelegate`. Observed on the iPhone 17 Pro
+  simulator (iOS 26.5): `isApplePayAvailable = true` (the simulator ships test cards in Wallet).
+- **Android:** Kotlin + `play-services-wallet:19.4.0`, `ENVIRONMENT_TEST`. After adding
+  `codegenConfig`, `android/app/.cxx` must be deleted once: the app CMake only links the app codegen
+  (`GametimeCheckoutSpecs_ModuleProvider`) if `codegen/jni` existed when CMake was configured; with a
+  stale cache the module is silently missing in JS.
+- **`existingPaymentMethodRequired` in TEST** (AVD `Pixel_RN`, `google_apis`, no Play Store, no card
+  in Google Wallet): `true` → `isReadyToPay = false`; `false` → `true`. Kept `true`, which matches
+  "Google Pay only with a ready wallet". The native side logs the result under the `WalletCapability`
+  logcat tag (no sensitive data).
+- **Missing native module** → `false` for both wallets (`unavailableWalletSource`), with no
+  dev-only fake: the dev menu overrides cover simulation.
