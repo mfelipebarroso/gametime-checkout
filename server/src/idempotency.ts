@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { DB } from './db';
 
-export type Scope = 'create' | 'authorize';
+type Scope = 'create' | 'authorize';
 
 /** Canonical JSON: keys sorted recursively. */
-export function canonicalJson(value: unknown): string {
+function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(',')}]`;
   }
@@ -23,7 +23,7 @@ export function requestHash(value: unknown): string {
 
 type KeyRow = { request_hash: string; response_status: number; response_body: string };
 
-export type KeyLookup =
+type KeyLookup =
   | { kind: 'new' }
   | { kind: 'replay'; status: number; body: unknown }
   | { kind: 'mismatch' };

@@ -3,6 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEMO_ORDER_ID, type OrderQuote, type PaymentMethod } from '@shared';
 import { Linking } from 'react-native';
+import { v4 as uuidv4 } from 'uuid';
 import { API_BASE_URL, TIMEOUTS_MS } from '../api/config';
 import { createPaymentApi } from '../api/paymentApi';
 import type { Logger } from '../logger';
@@ -10,7 +11,6 @@ import { createAffirmAdapter } from '../payments/affirm';
 import { createCardAdapter } from '../payments/card';
 import { createWalletSheetAdapter, type WalletSheetController } from '../payments/walletSheet';
 import { createAttemptStore } from './attemptStore';
-import { newAttemptId } from './ids';
 import { CheckoutOrchestrator } from './orchestrator';
 
 export function createCheckout(deps: {
@@ -30,7 +30,7 @@ export function createCheckout(deps: {
     },
     logger: deps.logger,
     orderId: DEMO_ORDER_ID,
-    newId: newAttemptId,
+    newId: () => uuidv4(),
     now: () => new Date(),
     sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
     isEligible: deps.isEligible,

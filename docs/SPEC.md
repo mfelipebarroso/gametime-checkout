@@ -29,11 +29,9 @@ type OrderQuote = {
 
 With the default values, quantity 1 gives $51.75 (no Affirm) and quantity 2 gives $103.50
 (with Affirm). That way the quantity selector crosses the threshold naturally.
+The exact boundary ($100.00 vs $100.01) is covered by the eligibility unit tests.
 
-For edge cases, the developer menu forces the total to $99.99, $100.00, $100.01 or $150.00 via
-`PUT /v1/mock/orders/:id` (§5.7).
-
-Money formatting: a pure function `formatUSD(minor)` that returns `"$103.50"`. Never divide by 100
+Money formatting: a pure function `formatUsd(minor)` that returns `"$103.50"`. Never divide by 100
 as a float to do math, only to display.
 
 ---
@@ -350,9 +348,6 @@ because none of them was authorized.
     `succeeded`.
   - `drop_response`: records the approved result normally, **commits** and calls
     `req.socket.destroy()` without responding. Simulates "the server charged, the app never knew".
-- **`PUT /v1/mock/orders/:orderId`**
-  - Body: `{ "totalOverrideMinor": 9999|10000|10001|15000|null }`.
-  - Increments the order version.
 - **`POST /v1/mock/reset`**: clears attempts, authorizations and keys, and recreates `order_demo`.
 - **`GET /mock/affirm/checkout?attemptId=…`**
   - Simple HTML page with the amount and the **Approve** and **Cancel** buttons.
@@ -496,15 +491,13 @@ is not persisted.
 | Platform | Device · iOS · Android | `platform` in eligibility |
 | Apple Pay | Real · Card provisioned · No cards | capability override |
 | Google Pay | Real · Set up · Not set up | capability override |
-| Slow server (8 s) | on · off | `POST /v1/mock/scenario` with `latencyMs: 8000`, to kill the app mid-authorize |
-| Reset demo | — | `POST /v1/mock/reset` + clear the snapshot |
 
 The menu also shows the **real** capability values, read-only. The default is "Real" for
 capabilities. With "Platform: iOS" on an Android device the simulated Apple Pay sheet appears, which is
 fine because it is pure JS.
 
-The other mock controls (next outcome, exact order totals) are server routes only, used by the server
-tests and by `curl`.
+Latency, forced outcomes and reset are server routes only (§5.7), used by the server tests and by
+`curl`.
 
 ---
 
@@ -514,7 +507,7 @@ tests and by `curl`.
 CREATE TABLE orders (
   id TEXT PRIMARY KEY, version INTEGER NOT NULL, quantity INTEGER NOT NULL,
   unit_price_minor INTEGER NOT NULL, fee_minor INTEGER NOT NULL,
-  total_override_minor INTEGER, status TEXT NOT NULL DEFAULT 'open',
+  status TEXT NOT NULL DEFAULT 'open',
   paid_attempt_id TEXT
 );
 CREATE TABLE payment_attempts (

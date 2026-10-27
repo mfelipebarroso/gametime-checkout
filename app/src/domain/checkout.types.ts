@@ -50,7 +50,7 @@ export function isWalletMethod(method: PaymentMethod): method is WalletMethod {
 }
 
 /** An attempt is in progress: a server result can still arrive, and the pay buttons stay locked. */
-export const IN_FLIGHT_TAGS: readonly CheckoutTag[] = [
+const IN_FLIGHT_TAGS: readonly CheckoutTag[] = [
   'creating',
   'awaiting_wallet',
   'awaiting_affirm',

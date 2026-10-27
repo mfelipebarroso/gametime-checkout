@@ -317,30 +317,16 @@ describe('QUOTE_STALE', () => {
 });
 
 describe('Affirm', () => {
-  async function setTotal(minor: number | null) {
-    return h.api().put('/v1/mock/orders/order_demo').send({ totalOverrideMinor: minor }).expect(200);
-  }
-
-  test('create with total 10000 → 422 METHOD_NOT_ELIGIBLE; 10001 → 201', async () => {
-    await setTotal(10000);
-    const q1 = await getOrder(h);
+  test('the server enforces the $100 threshold too: 1 ticket → 422 METHOD_NOT_ELIGIBLE, 2 tickets → 201', async () => {
+    const q1 = (await h.api().put('/v1/orders/order_demo').send({ quantity: 1 }).expect(200)).body;
+    expect(q1.total.minorUnits).toBe(5175);
     const b1 = createBody(q1, 'affirm');
     const r1 = await h.api().post('/v1/payment-attempts').set('Idempotency-Key', b1.clientAttemptId).send(b1).expect(422);
     expect(r1.body.error.code).toBe('METHOD_NOT_ELIGIBLE');
 
-    await setTotal(10001);
-    const q2 = await getOrder(h);
-    expect(q2.total.minorUnits).toBe(10001);
+    const q2 = (await h.api().put('/v1/orders/order_demo').send({ quantity: 2 }).expect(200)).body;
     const b2 = createBody(q2, 'affirm');
     await h.api().post('/v1/payment-attempts').set('Idempotency-Key', b2.clientAttemptId).send(b2).expect(201);
-  });
-
-  test('override bumps the version; null returns to quantity-based pricing', async () => {
-    const before = await getOrder(h);
-    const r = await setTotal(9999);
-    expect(r.body).toMatchObject({ version: before.version + 1, total: { minorUnits: 9999 } });
-    const back = await setTotal(null);
-    expect(back.body.total.minorUnits).toBe(10350);
   });
 
   test('page, approve → 302 to the scheme, GET succeeded', async () => {
@@ -389,7 +375,6 @@ describe('mock and reset', () => {
     try {
       await prod.api().post('/v1/mock/scenario').send({ nextOutcome: 'decline' }).expect(404);
       await prod.api().post('/v1/mock/reset').expect(404);
-      await prod.api().put('/v1/mock/orders/order_demo').send({ totalOverrideMinor: 15000 }).expect(404);
       await prod.api().get('/mock/affirm/checkout?attemptId=x').expect(404);
       await prod.api().get('/health').expect(200);
     } finally {

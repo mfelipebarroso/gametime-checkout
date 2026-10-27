@@ -38,14 +38,14 @@ type AuthorizationRow = { outcome: 'approved' | 'declined' };
 /** `dropResponse` tells the route to destroy the socket after the commit. */
 export type AuthorizeResult = ServiceResult & { dropResponse?: boolean };
 
-export type AttemptsDeps = {
+type AttemptsDeps = {
   db: DB;
   clock: Clock;
   processor: MockProcessor;
   sleep: (ms: number) => Promise<void>;
 };
 
-export function toAttempt(row: AttemptRow): Attempt {
+function toAttempt(row: AttemptRow): Attempt {
   return {
     attemptId: row.id,
     clientAttemptId: row.client_attempt_id,

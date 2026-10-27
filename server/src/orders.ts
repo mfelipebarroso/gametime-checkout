@@ -2,13 +2,12 @@ import type { OrderQuote } from '../../shared/index';
 import type { DB } from './db';
 import { errors, ok, type ServiceResult } from './http';
 
-export type OrderRow = {
+type OrderRow = {
   id: string;
   version: number;
   quantity: number;
   unit_price_minor: number;
   fee_minor: number;
-  total_override_minor: number | null;
   status: 'open' | 'paid';
   paid_attempt_id: string | null;
 };
@@ -22,11 +21,9 @@ export function getOrderRow(db: DB, id: string): OrderRow | undefined {
   return db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderRow | undefined;
 }
 
-/** With a total override (mock only), the forced value is the subtotal and there are no fees. */
 export function toQuote(row: OrderRow): OrderQuote {
-  const override = row.total_override_minor;
-  const subtotal = override ?? row.quantity * row.unit_price_minor;
-  const fees = override !== null ? 0 : row.quantity * row.fee_minor;
+  const subtotal = row.quantity * row.unit_price_minor;
+  const fees = row.quantity * row.fee_minor;
   return {
     orderId: row.id,
     version: row.version,
@@ -43,21 +40,17 @@ export function toQuote(row: OrderRow): OrderQuote {
   };
 }
 
-type OrderChanges = { quantity?: number; totalOverrideMinor: number | null };
-
 /**
- * Applies the change and bumps the version. The order's `awaiting_user` attempts were priced on the old
+ * Sets the quantity and bumps the version. The order's `awaiting_user` attempts were priced on the old
  * version, so they are cancelled as QUOTE_STALE.
  */
-export function changeOrder(db: DB, id: string, changes: OrderChanges, now: Date): ServiceResult {
+export function changeQuantity(db: DB, id: string, quantity: number, now: Date): ServiceResult {
   return db.transaction((): ServiceResult => {
     const order = getOrderRow(db, id);
     if (!order) return errors.orderNotFound();
     if (order.status === 'paid') return errors.orderAlreadyPaid();
 
-    db.prepare(
-      `UPDATE orders SET version = version + 1, quantity = COALESCE(?, quantity), total_override_minor = ? WHERE id = ?`,
-    ).run(changes.quantity ?? null, changes.totalOverrideMinor, id);
+    db.prepare('UPDATE orders SET version = version + 1, quantity = ? WHERE id = ?').run(quantity, id);
     db.prepare(
       `UPDATE payment_attempts SET status = 'cancelled', failure_code = 'QUOTE_STALE', updated_at = ?
        WHERE order_id = ? AND status = 'awaiting_user'`,

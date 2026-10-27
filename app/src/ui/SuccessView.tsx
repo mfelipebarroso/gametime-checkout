@@ -3,16 +3,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { formatMoney } from '../domain/money';
 import { colors, radius } from './theme';
 
-export function SuccessView({ quote, attemptId }: { quote: OrderQuote | null; attemptId: string }) {
+export function SuccessView({ quote, attemptId }: { quote: OrderQuote; attemptId: string }) {
   return (
     <View style={styles.card} accessibilityRole="summary" accessibilityLiveRegion="polite">
       <Text style={styles.check}>✓</Text>
       <Text style={styles.title}>You're in! Your tickets are confirmed.</Text>
-      {quote && (
-        <Text style={styles.detail}>
-          {quote.quantity} × {quote.eventName} · {formatMoney(quote.total)}
-        </Text>
-      )}
+      <Text style={styles.detail}>
+        {quote.quantity} × {quote.eventName} · {formatMoney(quote.total)}
+      </Text>
       <Text style={styles.ref}>Payment {attemptId}</Text>
     </View>
   );

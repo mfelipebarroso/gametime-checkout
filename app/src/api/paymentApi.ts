@@ -5,12 +5,11 @@ import {
   type Attempt,
   type AuthorizeRequest,
   type CreateAttemptRequest,
-  type MockScenario,
   type OrderQuote,
   type UpdateOrderRequest,
 } from '@shared';
 
-export type ApiErrorKind = 'network' | 'timeout' | 'http';
+type ApiErrorKind = 'network' | 'timeout' | 'http';
 
 /** Normalized API error. The message never includes request or response bodies. */
 export class ApiError extends Error {
@@ -54,12 +53,6 @@ export interface PaymentApi {
   affirmCheckoutUrl(attemptId: string): string;
 }
 
-export interface MockApi {
-  getScenario(): Promise<MockScenario>;
-  setScenario(changes: Partial<MockScenario>): Promise<MockScenario>;
-  reset(): Promise<void>;
-}
-
 type FetchLike = typeof fetch;
 
 type RequestOptions = {
@@ -69,7 +62,7 @@ type RequestOptions = {
   timeoutMs: number;
 };
 
-export type HttpClient = <T>(path: string, options: RequestOptions) => Promise<T>;
+type HttpClient = <T>(path: string, options: RequestOptions) => Promise<T>;
 
 export function createHttpClient(baseUrl: string, fetchImpl: FetchLike = fetch): HttpClient {
   return async function request<T>(path: string, options: RequestOptions): Promise<T> {
@@ -148,16 +141,5 @@ export function createPaymentApi(baseUrl: string, timeouts: Timeouts, http: Http
       http(`/v1/payment-attempts/${enc(attemptId)}/cancel`, { method: 'POST', timeoutMs: timeouts.default }),
     getAttempt: attemptId => http(`/v1/payment-attempts/${enc(attemptId)}`, { method: 'GET', timeoutMs: timeouts.default }),
     affirmCheckoutUrl: attemptId => `${baseUrl}/mock/affirm/checkout?attemptId=${enc(attemptId)}`,
-  };
-}
-
-/** Mock-only routes, used by the dev menu. */
-export function createMockApi(baseUrl: string, timeoutMs: number, http: HttpClient = createHttpClient(baseUrl)): MockApi {
-  return {
-    getScenario: () => http('/v1/mock/scenario', { method: 'GET', timeoutMs }),
-    setScenario: changes => http('/v1/mock/scenario', { method: 'POST', body: changes, timeoutMs }),
-    reset: async () => {
-      await http('/v1/mock/reset', { method: 'POST', timeoutMs });
-    },
   };
 }

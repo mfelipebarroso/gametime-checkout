@@ -2,20 +2,11 @@
 // be reviewed on one device. Opened by long-pressing the "Checkout" title, dev builds only. Real
 // detection stays the default ("Device" / "Real").
 
-import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { API_BASE_URL, TIMEOUTS_MS } from '../api/config';
-import { createMockApi } from '../api/paymentApi';
-import type { CheckoutOrchestrator } from '../checkout/orchestrator';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { Platform } from '../domain/eligibility';
 import type { Capabilities } from '../native/walletCapability';
 import { colors, radius } from '../ui/theme';
 import type { DevOverrides } from './overrides';
-
-/** Long enough to kill the app while an authorize is in flight. */
-const SLOW_SERVER_MS = 8000;
-
-const mockApi = createMockApi(API_BASE_URL, TIMEOUTS_MS.default);
 
 type Props = {
   visible: boolean;
@@ -24,47 +15,9 @@ type Props = {
   onChangeOverrides: (next: DevOverrides) => void;
   devicePlatform: Platform;
   realCapabilities: Capabilities | null;
-  orchestrator: CheckoutOrchestrator;
 };
 
-export function DevMenu(props: Props) {
-  const { visible, onClose, overrides, onChangeOverrides, orchestrator } = props;
-  const [slowServer, setSlowServer] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    mockApi
-      .getScenario()
-      .then(s => {
-        setSlowServer(s.latencyMs > 0);
-        setError(null);
-      })
-      .catch(() => setError('Mock server unreachable'));
-  }, [visible]);
-
-  const run = (task: () => Promise<unknown>) => {
-    task()
-      .then(() => setError(null))
-      .catch(() => setError('Mock server unreachable'));
-  };
-
-  const toggleSlowServer = (on: boolean) =>
-    run(async () => {
-      const s = await mockApi.setScenario({ latencyMs: on ? SLOW_SERVER_MS : 0 });
-      setSlowServer(s.latencyMs > 0);
-    });
-
-  const reset = () =>
-    run(async () => {
-      await mockApi.reset();
-      await orchestrator.devReset();
-      setSlowServer(false);
-    });
-
-  const caps = props.realCapabilities;
+export function DevMenu({ visible, onClose, overrides, onChangeOverrides, devicePlatform, realCapabilities: caps }: Props) {
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -74,13 +27,12 @@ export function DevMenu(props: Props) {
             <Text style={styles.close}>Done</Text>
           </Pressable>
         </View>
-        {error && <Text style={styles.error}>{error}</Text>}
 
         <View style={styles.section}>
           <Segmented
             label="Platform"
             options={[
-              { label: `Device (${props.devicePlatform})`, value: 'device' },
+              { label: `Device (${devicePlatform})`, value: 'device' },
               { label: 'iOS', value: 'ios' },
               { label: 'Android', value: 'android' },
             ]}
@@ -111,19 +63,6 @@ export function DevMenu(props: Props) {
             Real detection on this device: Apple Pay {caps ? String(caps.applePayAvailable) : '…'} · Google Pay{' '}
             {caps ? String(caps.googlePayReady) : '…'}
           </Text>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.switchRow}>
-            <View style={styles.switchText}>
-              <Text style={styles.label}>Slow server (8 s)</Text>
-              <Text style={styles.readonly}>Time to background or kill the app mid-payment.</Text>
-            </View>
-            <Switch value={slowServer} onValueChange={toggleSlowServer} accessibilityLabel="Slow server" />
-          </View>
-          <Pressable accessibilityRole="button" onPress={reset} style={styles.reset}>
-            <Text style={styles.resetText}>Reset demo</Text>
-          </Pressable>
         </View>
       </ScrollView>
     </Modal>
@@ -163,7 +102,6 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 20, fontWeight: '700', color: colors.text },
   close: { color: colors.info, fontSize: 16, fontWeight: '600' },
-  error: { color: colors.danger },
   section: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 14, gap: 14 },
   label: { color: colors.text, fontWeight: '600' },
   segmentedBlock: { gap: 6 },
@@ -173,8 +111,4 @@ const styles = StyleSheet.create({
   segmentText: { color: colors.text },
   segmentTextSelected: { color: colors.onDark },
   readonly: { color: colors.muted, fontSize: 13 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  switchText: { flex: 1, gap: 2 },
-  reset: { backgroundColor: colors.dangerBg, borderRadius: radius.md, paddingVertical: 12, alignItems: 'center' },
-  resetText: { color: colors.danger, fontWeight: '700' },
 });

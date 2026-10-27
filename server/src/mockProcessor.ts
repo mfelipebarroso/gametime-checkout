@@ -1,10 +1,10 @@
 import { TEST_TOKENS, type MockScenario, type PaymentMethod } from '../../shared/index';
 
-export const PROCESSING_HOLD_MS = 5000;
+const PROCESSING_HOLD_MS = 5000;
 
 const DEFAULT_SCENARIO: MockScenario = { nextOutcome: 'approve', latencyMs: 0 };
 
-export type ProcessorDecision = {
+type ProcessorDecision = {
   outcome: 'approved' | 'declined';
   /** > 0: the attempt stays `processing` until `resolve_at = now + holdMs`. */
   holdMs: number;

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import request from 'supertest';
 import { createApp } from '../src/app';
-import { FakeClock } from '../src/clock';
+import type { Clock } from '../src/clock';
 import { openDb, type DB } from '../src/db';
 import type { Attempt, OrderQuote, PaymentMethod } from '../../shared/index';
 
@@ -76,4 +76,17 @@ export function countAuthorizations(db: DB, orderId = 'order_demo'): number {
     .prepare('SELECT count(*) AS n FROM authorizations a JOIN payment_attempts p ON p.id = a.attempt_id WHERE p.order_id = ?')
     .get(orderId) as { n: number };
   return row.n;
+}
+
+/** Controllable clock: mock latency (`processing` with a `resolve_at`) resolves by advancing it. */
+export class FakeClock implements Clock {
+  private current = Date.UTC(2026, 9, 26, 12, 0, 0);
+
+  now(): Date {
+    return new Date(this.current);
+  }
+
+  advance(ms: number): void {
+    this.current += ms;
+  }
 }

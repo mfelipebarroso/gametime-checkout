@@ -181,7 +181,6 @@ export function CheckoutScreen() {
           onChangeOverrides={setOverrides}
           devicePlatform={DEVICE_PLATFORM}
           realCapabilities={realCapabilities}
-          orchestrator={orchestrator}
         />
       )}
     </SafeAreaView>

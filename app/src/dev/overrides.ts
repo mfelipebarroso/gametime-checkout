@@ -4,9 +4,9 @@
 import type { EligibilityInput, Platform } from '../domain/eligibility';
 import type { Capabilities } from '../native/walletCapability';
 
-export type PlatformOverride = 'device' | 'ios' | 'android';
-export type ApplePayOverride = 'real' | 'available' | 'unavailable';
-export type GooglePayOverride = 'real' | 'ready' | 'not_ready';
+type PlatformOverride = 'device' | 'ios' | 'android';
+type ApplePayOverride = 'real' | 'available' | 'unavailable';
+type GooglePayOverride = 'real' | 'ready' | 'not_ready';
 
 export type DevOverrides = {
   platform: PlatformOverride;

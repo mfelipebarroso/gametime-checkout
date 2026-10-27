@@ -728,13 +728,4 @@ export class CheckoutOrchestrator {
   dismiss(): void {
     this.dispatch({ type: 'DISMISS' });
   }
-
-  /** Dev menu "Reset demo" only: drops all client state after the server was reset. */
-  async devReset(): Promise<void> {
-    await this.clearSnapshot();
-    this.localOp = false;
-    this.state = initialCheckoutState;
-    this.emit();
-    await this.loadOrder();
-  }
 }

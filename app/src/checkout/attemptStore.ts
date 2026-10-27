@@ -6,7 +6,7 @@ import type { Logger } from '../logger';
 
 export const SNAPSHOT_KEY = 'checkout.attempt.v1';
 
-export type SnapshotPhase = 'creating' | 'awaiting_user' | 'redirected' | 'authorizing';
+type SnapshotPhase = 'creating' | 'awaiting_user' | 'redirected' | 'authorizing';
 const PHASES: readonly SnapshotPhase[] = ['creating', 'awaiting_user', 'redirected', 'authorizing'];
 
 export type AttemptSnapshot = {

@@ -43,11 +43,9 @@ The calls I made while building this, and where the implementation moved away fr
 - **Mock latency is modeled as `processing` with a `resolve_at`.** The request waits for the result,
   and a GET in the meantime sees `processing`, so killing the app mid-authorize ends in success through
   polling, never in an ambiguous state. Once resolved, the stored response for the key is updated.
-- **An order version change** (quantity PUT or mock total override) cancels the order's
+- **An order version change** (a quantity PUT) cancels the order's
   `awaiting_user` attempts with `failureCode: QUOTE_STALE`. Authorizing one of them is
   `409 QUOTE_STALE` (with `attempt` and `quote`).
-- **Mock total override:** the quote shows `subtotal = override` and `fees = 0`. A quantity PUT clears
-  it.
 - **The Affirm approve path** reuses authorize with a fixed key, `affirm:<attemptId>`, stored under the
   `authorize` scope.
 - **`sourceToken`** must match `^tok_test_[a-z0-9_]+$`, otherwise `422` (the value is never echoed).
@@ -88,9 +86,9 @@ The calls I made while building this, and where the implementation moved away fr
 
 ## Environment simulator
 
-- **Hidden and small:** long-press the "Checkout" title, dev builds only. It holds what the brief asks
-  for (platform, Apple Pay, Google Pay) plus "Slow server (8 s)" and "Reset demo". The other mock
-  controls (next outcome, exact totals) stay as server routes for the tests and `curl`.
+- **Hidden and small:** long-press the "Checkout" title, dev builds only. It holds only what the brief
+  asks for: platform, Apple Pay and Google Pay. Latency, forced outcomes and reset are server routes,
+  used by the tests and `curl`, so the app carries no mock client.
 
 ## Native
 

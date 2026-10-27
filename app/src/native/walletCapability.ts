@@ -3,7 +3,7 @@
 
 export type Capabilities = { applePayAvailable: boolean; googlePayReady: boolean };
 
-export interface WalletCapabilitySource {
+interface WalletCapabilitySource {
   isApplePayAvailable(): Promise<boolean>;
   isGooglePayReady(): Promise<boolean>;
 }

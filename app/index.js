@@ -1,7 +1,3 @@
-/**
- * @format
- */
-
 // Must load before anything that imports `uuid` (crypto.getRandomValues polyfill).
 import 'react-native-get-random-values';
 import { AppRegistry } from 'react-native';

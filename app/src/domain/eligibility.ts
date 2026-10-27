@@ -10,7 +10,7 @@ export type EligibilityInput = {
 };
 
 /** Affirm only when the total is strictly greater than $100.00 */
-export function isAffirmEligible(total: Money): boolean {
+function isAffirmEligible(total: Money): boolean {
   return total.currency === 'USD' && total.minorUnits > AFFIRM_MIN_EXCLUSIVE_MINOR;
 }
 

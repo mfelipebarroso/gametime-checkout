@@ -67,7 +67,7 @@ npm run android    # Android Emulator — talks to http://10.0.2.2:4000
 Tests and type checks:
 
 ```bash
-cd server && npm test            # 42 Vitest + Supertest tests
+cd server && npm test            # 41 Vitest + Supertest tests
 cd app && npm test               # 192 Jest tests
 cd app && npx tsc --noEmit
 ```
@@ -115,15 +115,23 @@ Long-press the **"Checkout"** title (dev builds only, `__DEV__`). Real detection
 | Platform | Device · iOS · Android |
 | Apple Pay | Real · Card provisioned · No cards |
 | Google Pay | Real · Set up · Not set up |
-| Slow server (8 s) | Gives time to background or kill the app mid-payment |
-| Reset demo | Clears the server (attempts, authorizations, keys) and the app's attempt snapshot |
 
 The menu also shows the real detection result for the device. Forcing "iOS" on Android shows the
 (pure JS) Apple Pay sheet, which is fine for reviewing the logic.
 
 Other failure paths need no menu: the `4000 0000 0000 0002` card is always declined, and every sheet
-has a Cancel button. The server keeps extra mock routes (forced decline, `processing`, dropped
-response, exact totals) for automated tests and `curl`.
+has a Cancel button. The server has a couple of mock routes for the rest:
+
+```sh
+# Make the next authorizes take 8 s, to kill the app mid-payment (send 0 to turn it off)
+curl -X POST localhost:4000/v1/mock/scenario -H 'Content-Type: application/json' -d '{"latencyMs":8000}'
+
+# Start over after a payment, then relaunch the app
+curl -X POST localhost:4000/v1/mock/reset
+```
+
+`/v1/mock/scenario` also takes `nextOutcome` (`decline`, `processing`, `drop_response`), which the
+server tests use.
 
 ---
 
@@ -141,7 +149,7 @@ Base URL `http://localhost:4000` (iOS) / `http://10.0.2.2:4000` (Android), confi
 | `POST /v1/payment-attempts/:id/cancel` | Cancels an attempt that is still `awaiting_user` |
 | `GET /v1/payment-attempts/:id` | Source of truth for reconciliation |
 | `GET /mock/affirm/checkout?attemptId=` | Mock Affirm page (Approve / Cancel) → `302 gametime-demo://payment/return?...` |
-| `POST /v1/mock/scenario`, `POST /v1/mock/reset`, `PUT /v1/mock/orders/:id` | Mock-only (`MOCK_MODE=1`), otherwise `404` |
+| `POST /v1/mock/scenario`, `POST /v1/mock/reset` | Mock-only (`MOCK_MODE=1`), otherwise `404` |
 
 Attempt status (server): `awaiting_user → processing → succeeded | declined`, or
 `awaiting_user → cancelled`. Errors are `{ error: { code, message, attempt?, quote? } }`.

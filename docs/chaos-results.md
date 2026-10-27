@@ -8,7 +8,7 @@ WHERE p.order_id='order_demo'` after the scenario. The demo was reset before eac
 | # | Scenario | What happened | Final attempt | Auth |
 |---|---|---|---|---|
 | M9 | Lost response (`drop_response`), card | Server committed the approval and destroyed the socket. Android's HTTP stack (OkHttp) silently retried the POST with the **same** `Idempotency-Key`; the server replayed the stored result instead of authorizing again. UI showed success. | `succeeded` | 1 |
-| M10 | Slow server (8 s), card, app killed while "Processing your payment…" | Killed with the attempt `processing`. Relaunch showed "We're checking your payment status. Don't pay again.", polled `GET` (no new authorize), then "You're in!". | `succeeded` | 1 |
+| M10 | 8 s server latency, card, app killed while "Processing your payment…" | Killed with the attempt `processing`. Relaunch showed "We're checking your payment status. Don't pay again.", polled `GET` (no new authorize), then "You're in!". | `succeeded` | 1 |
 | M11 | Google Pay sheet open (simulator: Google Pay "Set up"), app killed | Relaunch: "Your payment wasn't completed. You haven't been charged." The client cancelled the never-authorized attempt. | `cancelled` | 0 |
 | M12 | Affirm, Approve in Chrome, return via `gametime-demo://` | Deep link logged as `deeplink_received` (`result=approved`, not trusted) → reconcile by `GET` → success. | `succeeded` | 1 |
 | M13 | Affirm, app force-stopped, Approve in Chrome | The deep link cold-started the app, which reconciled from the persisted snapshot and showed success. | `succeeded` | 1 |

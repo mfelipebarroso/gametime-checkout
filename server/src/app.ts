@@ -16,9 +16,9 @@ import { resetDb, type DB } from './db';
 import { errors, fail, ok, type ServiceResult } from './http';
 import { requestLogger, stdoutSink, type LogSink } from './logger';
 import { MockProcessor } from './mockProcessor';
-import { changeOrder, getOrderRow, toQuote } from './orders';
+import { changeQuantity, getOrderRow, toQuote } from './orders';
 
-export type AppOptions = {
+type AppOptions = {
   db: DB;
   mockMode: boolean;
   clock?: Clock;
@@ -37,9 +37,6 @@ const UpdateOrderBody = z.object({ quantity: z.number().int().min(MIN_QUANTITY).
 const ScenarioBody = z.object({
   nextOutcome: z.enum(['approve', 'decline', 'processing', 'drop_response']).optional(),
   latencyMs: z.union([z.literal(0), z.literal(2000), z.literal(8000)]).optional(),
-});
-const MockOrderBody = z.object({
-  totalOverrideMinor: z.union([z.literal(9999), z.literal(10000), z.literal(10001), z.literal(15000), z.null()]),
 });
 const KeyHeader = z.string().min(8).max(200);
 
@@ -101,8 +98,7 @@ export function createApp(options: AppOptions) {
   app.put('/v1/orders/:orderId', (req, res) => {
     const parsed = UpdateOrderBody.safeParse(req.body);
     if (!parsed.success) return validationError(res, parsed.error);
-    // A quantity change also drops any mock total override.
-    send(res, changeOrder(db, req.params.orderId, { quantity: parsed.data.quantity, totalOverrideMinor: null }, clock.now()));
+    send(res, changeQuantity(db, req.params.orderId, parsed.data.quantity, clock.now()));
   });
 
   // ---------- Attempts ----------
@@ -140,21 +136,11 @@ export function createApp(options: AppOptions) {
   // ---------- Mock (MOCK_MODE=1 only) ----------
 
   if (mockMode) {
-    app.get('/v1/mock/scenario', (_req, res) => {
-      res.json(processor.getScenario());
-    });
-
     app.post('/v1/mock/scenario', (req, res) => {
       const parsed = ScenarioBody.safeParse(req.body);
       if (!parsed.success) return validationError(res, parsed.error);
       processor.setScenario(parsed.data);
       res.json(processor.getScenario());
-    });
-
-    app.put('/v1/mock/orders/:orderId', (req, res) => {
-      const parsed = MockOrderBody.safeParse(req.body);
-      if (!parsed.success) return validationError(res, parsed.error);
-      send(res, changeOrder(db, req.params.orderId, parsed.data, clock.now()));
     });
 
     app.post('/v1/mock/reset', (_req, res) => {

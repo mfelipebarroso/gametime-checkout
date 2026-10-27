@@ -8,7 +8,7 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY, version INTEGER NOT NULL, quantity INTEGER NOT NULL,
   unit_price_minor INTEGER NOT NULL, fee_minor INTEGER NOT NULL,
-  total_override_minor INTEGER, status TEXT NOT NULL DEFAULT 'open',
+  status TEXT NOT NULL DEFAULT 'open',
   paid_attempt_id TEXT
 );
 CREATE TABLE IF NOT EXISTS payment_attempts (
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS authorizations (
 );
 `;
 
-export const DEMO_ORDER = {
+const DEMO_ORDER = {
   id: DEMO_ORDER_ID,
   quantity: 2,
   unitPriceMinor: 4250,
@@ -47,7 +47,7 @@ export function openDb(filename: string): DB {
   return db;
 }
 
-export function seedDemoOrder(db: DB): void {
+function seedDemoOrder(db: DB): void {
   db.prepare(
     `INSERT OR IGNORE INTO orders (id, version, quantity, unit_price_minor, fee_minor, status)
      VALUES (?, 1, ?, ?, ?, 'open')`,
