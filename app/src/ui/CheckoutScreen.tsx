@@ -61,8 +61,22 @@ export function CheckoutScreen() {
   // Cold start, AppState and deep links all feed the same reconcile().
   useEffect(() => attachLifecycle(orchestrator, { appState: AppState, linking: Linking }), [orchestrator]);
 
+  // Real wallet detection, re-run whenever the app returns to the foreground: the fan may have just
+  // added (or removed) a card in Wallet / Google Wallet.
   useEffect(() => {
-    walletCapability.getCapabilities().then(setRealCapabilities);
+    const refresh = () =>
+      walletCapability.getCapabilities().then(next =>
+        setRealCapabilities(prev =>
+          prev?.applePayAvailable === next.applePayAvailable && prev?.googlePayReady === next.googlePayReady ? prev : next,
+        ),
+      );
+    refresh();
+    const sub = AppState.addEventListener('change', status => {
+      if (status === 'active') {
+        refresh();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   // Eligibility reacts to every new quote (quantity, fees, dev total override) and environment change.
@@ -97,7 +111,13 @@ export function CheckoutScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        // Tapping outside an input dismisses the keyboard; the iOS number pad has no return key.
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        // Keeps the focused card field and the Pay button reachable above the iOS keyboard.
+        automaticallyAdjustKeyboardInsets>
         <Text
           style={styles.heading}
           accessibilityRole="header"

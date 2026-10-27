@@ -3,7 +3,7 @@
 // advances when a field becomes complete and valid; Pay stays disabled until the card is valid.
 
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { Keyboard, Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import {
   CARD_ERROR_MESSAGES,
   cvcLengthFor,
@@ -87,7 +87,12 @@ export function CardForm({ payLabel, locked, resetKey, now, onSubmit }: Props) {
   };
 
   const onChangeCvc = (text: string) => {
-    setForm(f => ({ ...f, cvc: formatCvc(text, brand) }));
+    const cvc = formatCvc(text, brand);
+    setForm(f => ({ ...f, cvc }));
+    // Card complete and valid: put the keyboard away so the Pay button is in view.
+    if (validateCard({ ...form, cvc }, now()).valid) {
+      Keyboard.dismiss();
+    }
   };
 
   const submit = () => {

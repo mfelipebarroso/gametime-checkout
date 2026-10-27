@@ -92,6 +92,8 @@ expiry (e.g. `12/30`).
 - The two capability checks live in a small **Turbo Module** (`WalletCapability`, Swift +
   Objective-C++ glue on iOS, Kotlin on Android) behind a JS wrapper. Any error, throw or 3-second
   timeout resolves to `false`: that only hides the wallet, it never blocks checkout.
+- Detection runs on launch and again every time the app returns to the foreground, so a card the
+  fan just added to (or removed from) Wallet shows up without restarting the app.
 - `eligibleMethods({ platform, applePayAvailable, googlePayReady, total })` is a pure function
   (`app/src/domain/eligibility.ts`), tested with the full matrix including 9999 / 10000 / 10001.
 - **Total changes:** eligibility is recomputed from every new quote. Changing the quantity bumps the
@@ -195,7 +197,10 @@ Idempotency-Key: 9c7e2a44-…
 - **Native input behavior:** `keyboardType="number-pad"`, `textContentType`
   `creditCardNumber` / `creditCardExpiration` / `creditCardSecurityCode`, `autoComplete`
   `cc-number` / `cc-exp` / `cc-csc`; focus moves to the next field when one becomes complete and
-  valid; brand shown inline; each field has an accessibility label, and its error is announced.
+  valid, and the keyboard closes once the whole card is valid so Pay is in view (the iOS number pad
+  has no return key); the scroll view keeps the focused field above the keyboard and dismisses it on
+  drag or on a tap outside; brand shown inline; each field has an accessibility label, and its error
+  is announced.
 - **Data handling:** the card number never leaves the device. The stubbed tokenizer produces
   `tok_test_<brand>_<last4>`; only that token is sent, it lives in memory only, and the form clears
   after a terminal result.
@@ -318,7 +323,26 @@ at most one authorization per paid order in every scenario.
   `useReducer` in a component, so the double-tap guard reads the current state synchronously.
 - **Scope:** debug builds only; no component or E2E tests; English/USD only.
 
-## 9. With more time
+## 9. Known gaps
+
+Edge cases I know about and did not handle in this POC:
+
+- **Abandoned attempts never expire.** An Affirm attempt the fan never comes back to stays
+  `awaiting_user` until the next purchase cancels it; there is no TTL for attempts or idempotency
+  keys.
+- **No real biometric prompt.** The stubbed sheets are in-process modals, so the Face ID/Touch ID
+  prompt that moves a real app to `inactive`, and "biometrics failed, try again", are not exercised.
+  The orchestrator does not reconcile or cancel while a sheet is open, which is what that case needs.
+- **Background (not kill) mid-authorize**, e.g. a phone call: the request may time out while the JS
+  thread is suspended. The path exists (timeout → reconcile on return) and is unit-tested, but was
+  not reproduced with a real interruption.
+- **Expiry is checked against the device clock**; a wrong clock can accept or reject a card
+  incorrectly, and the server only ever sees the token.
+- **iOS interruption runs:** M9–M14 were run on Android only (see `docs/chaos-results.md`).
+- **No auth on the mock API:** anyone with an attempt id can read it.
+- **Not tested:** large Dynamic Type sizes, VoiceOver/TalkBack walkthroughs, rotation and tablets.
+
+## 10. With more time
 
 - E2E tests (Maestro or Detox) for M1–M14 on both platforms, in CI; run the interruption suite on iOS
   as well.
