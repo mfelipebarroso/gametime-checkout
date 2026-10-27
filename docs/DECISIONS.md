@@ -75,3 +75,23 @@ add a line under "Deviations" at the end of the file.
   "Check again" buttons. The `method` for `RETRY` and for `AUTHORIZE_STARTED` (retry) comes in the
   action.
 - **The reducer** is pure: `createCheckoutReducer(onInvalid)`; the caller logs `invalid_transition`.
+
+### 2026-10-26 — Phase 2
+
+- **Create replay** returns the *current* state of the attempt, not the stored 201. That is what lets
+  the client recover `attemptId` and status after losing the response (§6.4 step 1). Only successful
+  creates (201) are stored; errors are not, so a retry re-evaluates.
+- **The authorize hash** includes the `attemptId`: reusing a key on another attempt returns
+  `409 IDEMPOTENCY_KEY_REUSED`.
+- **Mock latency** = `processing` with `resolve_at = now + latency`, and the request waits for the
+  resolution. During the wait a GET sees `processing`, so killing the app (M10) ends in success via
+  polling, never in "cancellable". After resolution, the stored response for the key is updated to the
+  final result.
+- **Order version changed** (quantity PUT or override): `awaiting_user` attempts become `cancelled`
+  with `failureCode QUOTE_STALE`, and an authorize on them returns `409 QUOTE_STALE` (with `attempt`
+  and `quote`), not `ATTEMPT_NOT_AUTHORIZABLE`.
+- **Total override:** the quote shows `subtotal = override`, `fees = 0`. A quantity PUT clears the
+  override (back to "Quantity" mode).
+- **Mock extras:** `GET /v1/mock/scenario`, so the dev menu can read the current scenario. When the
+  attempt is no longer `awaiting_user`, the Affirm page shows a "Return to Gametime" link.
+- **`sourceToken`** must match `^tok_test_[a-z0-9_]+$`; otherwise `422` (without echoing the value).
