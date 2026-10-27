@@ -1,0 +1,20 @@
+node_modules/
+.DS_Store
+*.log
+# iOS
+app/ios/Pods/
+app/ios/build/
+**/xcuserdata/
+app/vendor/
+# Android
+app/android/.gradle/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+*.keystore
+!debug.keystore
+# server
+server/data/*.db
+server/data/*.db-*
+server/logs/
+coverage/

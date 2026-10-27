@@ -1,0 +1,9 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "strict": true,
+    "paths": { "@shared": ["./../shared/index.ts"], "@shared/*": ["./../shared/*"] }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../shared/**/*.ts"],
+  "exclude": ["**/node_modules", "**/Pods", "vendor"]
+}
